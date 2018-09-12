@@ -6,6 +6,7 @@ authors = ["bobtwinkles <srkoser+github@gmail.com>"]
 [dependencies]
 serde = "1.0"
 serde_derive = "1.0"
+diesel-derive-enum = "0.4"
 
 [dependencies.diesel]
 version = "1.3"

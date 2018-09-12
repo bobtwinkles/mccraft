@@ -1,4 +1,7 @@
-#![allow(proc_macro_derive_resolution_fallback)]
+#[derive(DbEnum, Debug)]
+pub enum ItemType {
+    Item, Fluid,
+}
 
 table! {
     crafting_components (id) {
@@ -17,9 +20,12 @@ table! {
 }
 
 table! {
+    use diesel::sql_types::*;
+    use super::ItemTypeMapping;
+
     items (id) {
         id -> Int4,
-        ty -> Item_type,
+        ty -> ItemTypeMapping,
         human_name -> Text,
         minecraft_id -> Text,
     }
