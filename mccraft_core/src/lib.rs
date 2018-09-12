@@ -1,5 +1,11 @@
 #[macro_use] extern crate serde_derive;
 extern crate serde;
+#[macro_use] extern crate diesel;
 
+/// The JSON schema for representing recipes
 pub mod json;
-pub mod sql;
+/// The SQL schema for representing recipes
+pub mod schema;
+
+/// Implementation of some utility functions on the schema types
+mod sql;
