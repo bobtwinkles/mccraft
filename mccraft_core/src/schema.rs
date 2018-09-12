@@ -1,3 +1,5 @@
+#![allow(proc_macro_derive_resolution_fallback)]
+
 table! {
     crafting_components (id) {
         id -> Int4,
