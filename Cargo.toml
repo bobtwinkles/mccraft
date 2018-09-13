@@ -3,4 +3,5 @@
 members = [
   "mccraft_core",
   "mccraft_importer",
+  "mccraft_web_server",
 ]

@@ -22,6 +22,13 @@ pub struct NewItem<'a> {
     pub ty: ItemType,
 }
 
+#[derive(Identifiable, Queryable, PartialEq, Eq, Debug)]
+pub struct Machine {
+    pub id: i32,
+    pub human_name: String,
+    pub minecraft_id: String,
+}
+
 #[derive(Insertable, Debug)]
 #[table_name = "machines"]
 pub struct NewMachine<'a> {
@@ -29,10 +36,27 @@ pub struct NewMachine<'a> {
     pub minecraft_id: &'a str,
 }
 
+#[derive(Identifiable, Queryable, Associations, PartialEq, Eq, Debug)]
+#[belongs_to(Machine, foreign_key = "machine")]
+pub struct Recipe {
+    pub id: i32,
+    pub machine: i32,
+}
+
 #[derive(Insertable, Debug)]
 #[table_name = "recipes"]
 pub struct NewRecipe {
     pub machine: i32,
+}
+
+#[derive(Identifiable, Queryable, Associations, PartialEq, Eq, Debug)]
+#[belongs_to(Recipe, foreign_key = "recipe")]
+#[belongs_to(Item, foreign_key = "item")]
+pub struct Output {
+    pub id: i32,
+    pub recipe: i32,
+    pub quantity: i32,
+    pub item: i32,
 }
 
 #[derive(Insertable, Debug)]
@@ -43,7 +67,8 @@ pub struct NewOutput {
     pub item: i32,
 }
 
-#[derive(Identifiable, Queryable, Debug)]
+#[derive(Identifiable, Queryable, Associations, PartialEq, Eq, Debug)]
+#[belongs_to(Recipe, foreign_key = "for_recipe")]
 pub struct InputSlot {
     pub id: i32,
     pub for_recipe: i32,
@@ -53,6 +78,16 @@ pub struct InputSlot {
 #[table_name = "input_slots"]
 pub struct NewInputSlot {
     pub for_recipe: i32,
+}
+
+#[derive(Identifiable, Queryable, Associations, PartialEq, Eq, Debug)]
+#[belongs_to(InputSlot, foreign_key = "crafting_slot")]
+#[table_name = "crafting_components"]
+pub struct CraftingComponent {
+    pub id: i32,
+    pub crafting_slot: i32,
+    pub quantity: i32,
+    pub item: i32,
 }
 
 #[derive(Insertable, Debug)]

@@ -35,9 +35,9 @@ pub mod mccraft {
     table! {
         mccraft.outputs (id) {
             id -> Int4,
-            recipe -> Nullable<Int4>,
-            quantity -> Nullable<Int4>,
-            item -> Nullable<Int4>,
+            recipe -> Int4,
+            quantity -> Int4,
+            item -> Int4,
         }
     }
 
