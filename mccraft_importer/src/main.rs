@@ -4,133 +4,41 @@ extern crate serde;
 extern crate serde_json;
 #[macro_use]
 extern crate log;
+extern crate diesel;
+extern crate dotenv;
 extern crate env_logger;
 extern crate string_interner;
 
+mod recipe_db;
+mod types;
+
+use diesel::{Connection, PgConnection};
+use mccraft_core::json::recipe;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use string_interner::Sym;
 
-type StringInterner = string_interner::StringInterner<Sym, fxhash::FxBuildHasher>;
-
-/// A crafting ingredient
-#[derive(PartialEq, Eq, Debug, Clone)]
-enum RecipeComponent {
-    ItemStack { count: u32, name: Sym },
-    Fluid { amount: u32, name: Sym },
-}
-
-impl RecipeComponent {
-    pub fn from_fluid(interner: &mut StringInterner, fluid: &mccraft_core::json::Fluid) -> Self {
-        RecipeComponent::Fluid {
-            amount: fluid.amount as u32,
-            name: interner.get_or_intern(fluid.ty.as_str()),
-        }
-    }
-
-    pub fn from_item(interner: &mut StringInterner, item: &mccraft_core::json::ItemStack) -> Self {
-        RecipeComponent::ItemStack {
-            count: item.amount as u32,
-            name: interner.get_or_intern(item.ty.as_str()),
-        }
-    }
-
-    fn get_name(&self) -> Sym {
-        match *self {
-            RecipeComponent::ItemStack { name, .. } | RecipeComponent::Fluid { name, .. } => name,
-        }
-    }
-}
-
-/// A slot that holds crafting ingredients
-#[derive(PartialEq, Eq, Debug, Clone)]
-struct CraftingSlot {
-    allowed_elements: Vec<RecipeComponent>,
-}
-
-impl CraftingSlot {
-    pub fn new() -> CraftingSlot {
-        CraftingSlot {
-            allowed_elements: Vec::new(),
-        }
-    }
-}
-
-/// An individual recipe
-#[derive(PartialEq, Eq, Debug, Clone)]
-struct Recipe {
-    machine: Sym,
-    inputs: Vec<CraftingSlot>,
-    outputs: Vec<RecipeComponent>,
-}
-
-impl Recipe {
-    pub fn new(machine: Sym) -> Self {
-        Recipe {
-            machine,
-            inputs: Vec::new(),
-            outputs: Vec::new(),
-        }
-    }
-}
-
-/// Database of all recipes
-struct RecipeDatabase {
-    recipes: Vec<Recipe>,
-}
-
-impl RecipeDatabase {
-    pub fn new() -> Self {
-        RecipeDatabase {
-            recipes: Vec::new(),
-        }
-    }
-
-    pub fn add_recipe(&mut self, recipe: Recipe) {
-        self.recipes.push(recipe);
-    }
-}
-
-/// Generic error type for passing around inside
-#[derive(Debug)]
-enum MCCraftError {
-    IOError(std::io::Error),
-    DeserializeError(serde_json::error::Error),
-}
-
-impl From<std::io::Error> for MCCraftError {
-    fn from(o: std::io::Error) -> Self {
-        MCCraftError::IOError(o)
-    }
-}
-
-impl From<serde_json::error::Error> for MCCraftError {
-    fn from(o: serde_json::error::Error) -> Self {
-        MCCraftError::DeserializeError(o)
-    }
-}
+use recipe_db::RecipeDatabase;
+use types::*;
 
 // Convert a list of fluids into a slot that accepts any of those fluids
-fn slot_from_fluids(
-    interner: &mut StringInterner,
-    ingredient: &mccraft_core::json::IngredientFluid,
-) -> CraftingSlot {
+fn slot_from_fluids(db: &mut RecipeDatabase, ingredient: &recipe::IngredientFluid) -> CraftingSlot {
     let mut slot = CraftingSlot::new();
     slot.allowed_elements.reserve(ingredient.fluids.len());
     for ref fluid in &ingredient.fluids {
-        slot.allowed_elements.push(RecipeComponent::from_fluid(interner, fluid));
+        slot.allowed_elements
+            .push(RecipeComponent::from_fluid(db, fluid));
     }
 
     slot
 }
 
-fn slot_from_items(
-    interner: &mut StringInterner,
-    ingredient: &mccraft_core::json::IngredientItem,
-) -> CraftingSlot {
+fn slot_from_items(db: &mut RecipeDatabase, ingredient: &recipe::IngredientItem) -> CraftingSlot {
     let mut slot = CraftingSlot::new();
     slot.allowed_elements.reserve(ingredient.stacks.len());
     for ref stack in &ingredient.stacks {
-        slot.allowed_elements.push(RecipeComponent::from_item(interner, stack));
+        slot.allowed_elements
+            .push(RecipeComponent::from_item(db, stack));
     }
 
     slot
@@ -138,9 +46,8 @@ fn slot_from_items(
 
 fn handle_covariant_recipe(
     db: &mut RecipeDatabase,
-    interner: &mut StringInterner,
     machine: Sym,
-    jrecipe: &mccraft_core::json::Recipe,
+    jrecipe: &recipe::Recipe,
     covariant_count: usize,
 ) {
     let mut template = Recipe::new(machine);
@@ -154,7 +61,7 @@ fn handle_covariant_recipe(
             continue;
         }
 
-         if item_slot.stacks.len() == covariant_count {
+        if item_slot.stacks.len() == covariant_count {
             // This is one of the stacks that is covariant. Stuff a reference to it into the right list
             if item_slot.is_input {
                 covariant_inputs.push(item_slot);
@@ -166,11 +73,13 @@ fn handle_covariant_recipe(
 
         // Otherwise, add it to the template
         if item_slot.is_input {
-            template.inputs.push(slot_from_items(interner, &item_slot));
+            template.inputs.push(slot_from_items(db, &item_slot));
         } else {
             // We can only deal with one kind of covariance at a time
             assert!(item_slot.stacks.len() == 1);
-            template.outputs.push(RecipeComponent::from_item(interner, &item_slot.stacks[0]));
+            template
+                .outputs
+                .push(RecipeComponent::from_item(db, &item_slot.stacks[0]));
         }
     }
 
@@ -181,12 +90,14 @@ fn handle_covariant_recipe(
         }
 
         if fluid_slot.is_input {
-            let slot = slot_from_fluids(interner, &fluid_slot);
+            let slot = slot_from_fluids(db, &fluid_slot);
             template.inputs.push(slot);
         } else {
             // we don't handle covariance for fluids, so there better only be one output
             assert!(fluid_slot.fluids.len() == 1);
-            template.outputs.push(RecipeComponent::from_fluid(interner, &fluid_slot.fluids[0]))
+            template
+                .outputs
+                .push(RecipeComponent::from_fluid(db, &fluid_slot.fluids[0]))
         }
     }
 
@@ -196,26 +107,31 @@ fn handle_covariant_recipe(
 
         for ref input in &covariant_inputs {
             let mut slot = CraftingSlot::new();
-            slot.allowed_elements.push(RecipeComponent::from_item(interner, &input.stacks[i]));
+            slot.allowed_elements
+                .push(RecipeComponent::from_item(db, &input.stacks[i]));
             recipe.inputs.push(slot);
         }
 
         for ref output in &covariant_outputs {
-            recipe.outputs.push(RecipeComponent::from_item(interner, &output.stacks[i]));
+            recipe
+                .outputs
+                .push(RecipeComponent::from_item(db, &output.stacks[i]));
         }
 
         db.add_recipe(recipe);
     }
 }
 
+/// The primary recipe import procedure
 fn import_recipes(
     db: &mut RecipeDatabase,
-    interner: &mut StringInterner,
     json_path: impl AsRef<std::path::Path>,
 ) -> Result<(), MCCraftError> {
     let instance_file = std::fs::File::open(json_path.as_ref())?;
-    let instance: mccraft_core::json::CraftingInstance = serde_json::from_reader(instance_file)?;
-    let machine = interner.get_or_intern(instance.category);
+    let instance: recipe::CraftingInstance = serde_json::from_reader(instance_file)?;
+    let machine = db.get_or_intern(instance.bg.tex);
+    db.add_machine(machine, instance.category);
+
     let mut discard_recipe = false;
     for jrecipe in instance.recipes {
         let mut recipe = Recipe::new(machine);
@@ -224,21 +140,17 @@ fn import_recipes(
                 continue;
             }
 
-            let slot = slot_from_items(interner, &item_slot);
+            let slot = slot_from_items(db, &item_slot);
             if item_slot.is_input {
                 recipe.inputs.push(slot);
             } else {
                 if item_slot.stacks.len() != 1 {
-                    handle_covariant_recipe(
-                        db,
-                        interner,
-                        machine,
-                        &jrecipe,
-                        item_slot.stacks.len(),
-                    );
+                    handle_covariant_recipe(db, machine, &jrecipe, item_slot.stacks.len());
                     discard_recipe = true;
                 }
-                recipe.outputs.push(RecipeComponent::from_item(interner, &item_slot.stacks[0]));
+                recipe
+                    .outputs
+                    .push(RecipeComponent::from_item(db, &item_slot.stacks[0]));
             }
         }
         for fluid_slot in jrecipe.ingredient_fluids {
@@ -247,11 +159,13 @@ fn import_recipes(
             }
 
             if fluid_slot.is_input {
-                let slot = slot_from_fluids(interner, &fluid_slot);
+                let slot = slot_from_fluids(db, &fluid_slot);
                 recipe.inputs.push(slot);
             } else {
                 assert!(fluid_slot.fluids.len() == 1);
-                recipe.outputs.push(RecipeComponent::from_fluid(interner, &fluid_slot.fluids[0]));
+                recipe
+                    .outputs
+                    .push(RecipeComponent::from_fluid(db, &fluid_slot.fluids[0]));
             }
         }
         if !discard_recipe {
@@ -263,7 +177,57 @@ fn import_recipes(
     Ok(())
 }
 
+/// Parses the tooltips, returning a map from MC ID to human-readable name.
+fn import_tooltips(
+    db: &mut RecipeDatabase,
+    json_path: impl AsRef<std::path::Path>,
+) -> Result<(), MCCraftError> {
+    let instance_file = std::fs::File::open(json_path.as_ref())?;
+    let tooltips: HashMap<String, String> = serde_json::from_reader(instance_file)?;
+
+    for (mc_name, human_name) in tooltips.into_iter() {
+        let mc_name = db.get_or_intern(mc_name);
+        db.associate_name(mc_name, human_name);
+    }
+
+    Ok(())
+}
+
+fn ingest(path: &std::path::PathBuf) -> RecipeDatabase {
+    let mut db = RecipeDatabase::new();
+
+    for file in path.read_dir().expect("iterator over exports folder") {
+        info!("Processing file {:?}", file);
+        if !file.is_ok() {
+            warn!("skipping file {:?}", file);
+            continue;
+        }
+        let file = file.unwrap();
+        let file = file.path();
+        let file_name = file.file_name();
+        if file_name == Some(OsStr::new("tooltipMap.json")) {
+            import_tooltips(&mut db, &file).expect("Failed to import tooltip map");
+        } else if file_name == Some(OsStr::new("lookupMap.json")) {
+            info!("Skipping lookup map since it's just an inverse tooltip map");
+        } else {
+            let start_len = db.num_recipes();
+            match import_recipes(&mut db, &file) {
+                Ok(()) => info!(
+                    "Processing completed successfully. {} recipes added",
+                    db.num_recipes() - start_len
+                ),
+                Err(e) => warn!("Processing failed {:?}", e),
+            }
+        }
+    }
+
+    println!("Ingested {:?} recipes", db.num_recipes());
+
+    db
+}
+
 fn main() {
+    dotenv::dotenv().ok();
     let env = env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info");
     env_logger::Builder::from_env(env).init();
 
@@ -276,36 +240,14 @@ fn main() {
     let base_folder = std::path::PathBuf::from(arguments[1].to_owned());
     let exports_folder = base_folder.join("exports");
 
-    let mut db = RecipeDatabase::new();
-    let mut interner = StringInterner::with_hasher(Default::default());
+    let recipe_db = ingest(&exports_folder);
 
-    for file in exports_folder
-        .read_dir()
-        .expect("iterator over exports folder")
-    {
-        info!("Processing file {:?}", file);
-        if !file.is_ok() {
-            warn!("skipping file {:?}", file);
-            continue;
-        }
-        let file = file.unwrap();
-        let file = file.path();
-        let file_name = file.file_name();
-        if file_name == Some(OsStr::new("tooltipMap.json")) {
-            warn!("Reading tooltipMap not implemented yet");
-        } else if file_name == Some(OsStr::new("lookupMap.json")) {
-            warn!("Reading lookupMap not implemented yet");
-        } else {
-            let start_len = db.recipes.len();
-            match import_recipes(&mut db, &mut interner, &file) {
-                Ok(()) => info!(
-                    "Processing completed successfully. {} recipes added",
-                    db.recipes.len() - start_len
-                ),
-                Err(e) => warn!("Processing failed {:?}", e),
-            }
-        }
-    }
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    info!("Connecting to database {}", database_url);
 
-    println!("Processed {:?} recipes", db.recipes.len());
+    let conn = PgConnection::establish(&database_url)
+        .expect(&format!("error connecting to {}", database_url));
+
+    recipe_db.insert_items(&conn);
+    recipe_db.insert_recipes(&conn);
 }

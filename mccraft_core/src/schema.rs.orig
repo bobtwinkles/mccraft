@@ -16,12 +16,9 @@ pub mod mccraft {
     }
 
     table! {
-        use diesel::sql_types::*;
-        use crate::sql::ItemTypeMapping;
-
         mccraft.items (id) {
             id -> Int4,
-            ty -> ItemTypeMapping,
+            ty -> Item_type,
             human_name -> Text,
             minecraft_id -> Text,
         }

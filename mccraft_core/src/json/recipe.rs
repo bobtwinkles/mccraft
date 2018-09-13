@@ -1,6 +1,3 @@
-use serde::{Deserialize, Deserializer};
-use std::marker::PhantomData;
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct BackgroundImage {
     #[serde(rename = "w")]
@@ -33,7 +30,7 @@ pub struct IngredientItem {
     pub p: u32,
     #[serde(rename = "in")]
     pub is_input: bool,
-    #[serde(deserialize_with = "deser_skip_nulls_list")]
+    #[serde(deserialize_with = "super::deser_skip_nulls_list")]
     pub stacks: Vec<ItemStack>,
 }
 
@@ -46,7 +43,7 @@ pub struct IngredientFluid {
     pub p: u32,
     #[serde(rename = "in")]
     pub is_input: bool,
-    #[serde(deserialize_with = "deser_skip_nulls_list")]
+    #[serde(deserialize_with = "super::deser_skip_nulls_list")]
     pub fluids: Vec<Fluid>,
 }
 
@@ -62,39 +59,4 @@ pub struct CraftingInstance {
     pub category: String,
     pub bg: BackgroundImage,
     pub recipes: Vec<Recipe>,
-}
-
-fn deser_skip_nulls_list<'de, D, T>(deser: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    use serde::de::{SeqAccess, Visitor};
-    use std::fmt;
-    struct SeqVisit<T> {
-        phantom: PhantomData<fn() -> T>,
-    };
-
-    impl<'de, T: Deserialize<'de>> Visitor<'de> for SeqVisit<T> {
-        type Value = Vec<T>;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            write!(formatter, "a sequence of item stacks")
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<T>, A::Error> {
-            let mut tr = Vec::new();
-            while let Some(v) = seq.next_element::<Option<T>>()? {
-                if v.is_some() {
-                    tr.push(v.unwrap())
-                }
-            }
-
-            Ok(tr)
-        }
-    }
-
-    deser.deserialize_seq(SeqVisit {
-        phantom: PhantomData,
-    })
 }

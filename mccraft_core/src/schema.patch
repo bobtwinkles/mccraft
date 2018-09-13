@@ -2,34 +2,23 @@ diff --git a/mccraft_core/src/schema.rs b/mccraft_core/src/schema.rs
 index 09a1c9f..c014f63 100644
 --- a/mccraft_core/src/schema.rs
 +++ b/mccraft_core/src/schema.rs
-@@ -1,5 +1,10 @@
-+#[derive(DbEnum, Debug)]
-+pub enum ItemType {
-+    Item, Fluid,
-+}
-+
- table! {
-     crafting_components (id) {
-         id -> Int4,
-         crafting_slot -> Int4,
-         item -> Int4,
 @@ -14,15 +17,18 @@ table! {
-         id -> Int4,
-         for_recipe -> Int4,
+             id -> Int4,
+             for_recipe -> Int4,
+         }
      }
- }
  
- table! {
-+    use diesel::sql_types::*;
-+    use super::ItemTypeMapping;
+     table! {
++        use diesel::sql_types::*;
++        use crate::sql::ItemTypeMapping;
 +
-     items (id) {
-         id -> Int4,
--        ty -> Item_type,
-+        ty -> ItemTypeMapping,
-         human_name -> Text,
-         minecraft_id -> Text,
+         mccraft.items (id) {
+             id -> Int4,
+-            ty -> Item_type,
++            ty -> ItemTypeMapping,
+             human_name -> Text,
+             minecraft_id -> Text,
+         }
      }
- }
  
- table! {
+     table! {

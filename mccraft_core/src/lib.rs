@@ -1,3 +1,4 @@
+#![feature(crate_in_paths)]
 #![allow(proc_macro_derive_resolution_fallback)]
 
 #[macro_use] extern crate serde_derive;
@@ -11,5 +12,5 @@ pub mod json;
 #[allow(unused_imports)]
 pub mod schema;
 
-/// Implementation of some utility functions on the schema types
-mod sql;
+/// The SQL model.
+pub mod sql;
