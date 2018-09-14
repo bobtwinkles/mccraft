@@ -1,4 +1,3 @@
-#![feature(crate_in_paths)]
 #![allow(proc_macro_derive_resolution_fallback)]
 
 #[macro_use] extern crate serde_derive;
@@ -14,3 +13,5 @@ pub mod schema;
 
 /// The SQL model.
 pub mod sql;
+
+pub mod web;

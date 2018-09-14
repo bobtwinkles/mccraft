@@ -1,6 +1,6 @@
-use crate::schema::mccraft::*;
+use ::schema::mccraft::*;
 
-#[derive(DbEnum, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, DbEnum, Debug, Copy, Clone)]
 pub enum ItemType {
     Item,
     Fluid,
