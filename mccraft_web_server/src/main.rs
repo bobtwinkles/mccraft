@@ -24,16 +24,13 @@ struct AppState {
 fn index(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     let dbref = req.state().db.clone();
     dbref.send(db::searches::SearchOutputs::ByName("Diamond".to_owned()))
-        .from_err()
-        .and_then(|r| match r {
-            Ok(o) => future::ok(o),
-            Err(e) => future::err(Error::from(e))
-        })
-        .from_err()
+        .map_err(Error::from)
+        .and_then(future::result)
+        .map_err(Error::from)
         .and_then(move |recipes| {
             dbref.send(db::searches::RetrieveRecipe {
                 partial: recipes[0].clone(),
-            }).map_err(Error::from)
+            }).and_then(future::result).map_err(Error::from)
         })
         .and_then(|r| match r {
             Ok(o) => future::ok(o),
