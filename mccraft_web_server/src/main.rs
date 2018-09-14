@@ -10,12 +10,13 @@ extern crate fxhash;
 extern crate log;
 extern crate mccraft_core;
 
+pub mod db;
+pub mod future_helpers;
+
 use actix::prelude::*;
 use actix_web::{server, App, AsyncResponder, FutureResponse, HttpRequest, HttpResponse};
-use failure::Error;
-use futures::{future, Future};
-
-pub mod db;
+use future_helpers::FutureExt;
+use futures::Future;
 
 struct AppState {
     db: Addr<db::DbExecutor>,
@@ -23,26 +24,17 @@ struct AppState {
 
 fn index(req: &HttpRequest<AppState>) -> FutureResponse<HttpResponse> {
     let dbref = req.state().db.clone();
-    dbref.send(db::searches::SearchOutputs::ByName("Diamond".to_owned()))
-        .from_err()
-        .and_then(|r| match r {
-            Ok(o) => future::ok(o),
-            Err(e) => future::err(Error::from(e))
-        })
-        .from_err()
+    dbref
+        .send(db::searches::SearchOutputs::ByName("Diamond".to_owned()))
+        .lift_result()
         .and_then(move |recipes| {
-            dbref.send(db::searches::RetrieveRecipe {
-                partial: recipes[0].clone(),
-            }).map_err(Error::from)
-        })
-        .and_then(|r| match r {
-            Ok(o) => future::ok(o),
-            Err(e) => future::err(Error::from(e))
-        })
+            dbref
+                .send(db::searches::RetrieveRecipe {
+                    partial: recipes[0].clone(),
+                }).lift_result()
+        }).and_then(|res| Ok(HttpResponse::Ok().json(res)))
         .from_err()
-        .and_then(|res| {
-            Ok(HttpResponse::Ok().json(res))
-        }).responder()
+        .responder()
 }
 
 fn main() {
