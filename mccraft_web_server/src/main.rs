@@ -67,6 +67,8 @@ fn item_info(req: &HttpRequest<AppState>) -> impl Responder {
 #[derive(Deserialize)]
 pub struct SearchRequest {
     q: String,
+    offset: Option<i64>,
+    limit: Option<i64>,
 }
 
 fn search_for_item(req: &HttpRequest<AppState>) -> impl Responder {
@@ -75,7 +77,11 @@ fn search_for_item(req: &HttpRequest<AppState>) -> impl Responder {
         .and_then(move |query| {
             let query = query.into_inner();
             dbref
-                .send(db::searches::SearchOutputs::ByName(query.q))
+                .send(db::searches::SearchItems {
+                    name: query.q,
+                    offset: query.offset.unwrap_or(0),
+                    limit: query.limit.unwrap_or(10),
+                })
                 .from_err()
         }).and_then(json_response)
         .responder()
@@ -109,6 +115,7 @@ fn start_server(listen_addr: &str, server_configuration: ServerConfiguration) {
         };
 
         let mut app = App::with_state(app_state)
+            .middleware(actix_web::middleware::Logger::default())
             .resource("/", |r| r.f(index))
             .resource("/producers/{id}.json", |r| {
                 r.method(http::Method::GET).f(recipes_for_item)

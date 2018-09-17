@@ -2,6 +2,7 @@ use super::DbExecutor;
 use actix_web::actix::*;
 use diesel::prelude::*;
 use mccraft_core::schema::mccraft as schema;
+use mccraft_core::sql;
 use mccraft_core::web::PartialRecipe;
 
 /// Search the outputs of all recipes
@@ -62,5 +63,33 @@ impl Handler<SearchOutputs> for DbExecutor {
             SearchOutputs::ByName(hn) => self.handle_search_outputs_by_name(hn),
             SearchOutputs::ById(id) => self.handle_search_outputs_by_id(id),
         }
+    }
+}
+
+pub struct SearchItems {
+    pub name: String,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+impl Message for SearchItems {
+    type Result = QueryResult<Vec<sql::Item>>;
+}
+
+impl Handler<SearchItems> for DbExecutor {
+    type Result = <SearchItems as Message>::Result;
+
+    fn handle(&mut self, mut msg: SearchItems, _: &mut Self::Context) -> Self::Result {
+        use self::schema::{items, outputs};
+        msg.name.push('%');
+        Ok(items::table
+            .inner_join(outputs::table)
+            .filter(items::human_name.ilike(msg.name))
+            .limit(msg.limit)
+            .offset(msg.offset)
+            .order_by((items::human_name, items::id))
+            .distinct_on((items::human_name, items::id))
+            .select((items::id, items::ty, items::human_name, items::minecraft_id))
+            .load::<sql::Item>(&self.0)?)
     }
 }
