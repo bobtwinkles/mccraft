@@ -1,6 +1,5 @@
 //! Types for use when communicating between the web server and frontend
 
-use diesel;
 use sql::ItemType;
 
 /// Specifies an input or output item

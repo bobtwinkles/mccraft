@@ -6,7 +6,7 @@ pub enum ItemType {
     Fluid,
 }
 
-#[derive(Identifiable, Queryable, Debug)]
+#[derive(Serialize, Identifiable, Queryable, Debug)]
 pub struct Item {
     pub id: i32,
     pub ty: ItemType,

@@ -8,11 +8,14 @@ actix = "0.7"
 actix-web = "0.7"
 dotenv = "0.10"
 env_logger = "0.5"
+serde = "1.0"
+serde_derive = "1.0"
 failure = "0.1"
 futures = "0.1"
 fxhash = "0.2"
 log = "0.4"
 mccraft_core = { path = "../mccraft_core" }
+clap = "2.32"
 
 [dependencies.diesel]
 version = "1.3"

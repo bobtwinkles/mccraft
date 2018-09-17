@@ -2,6 +2,7 @@ use actix_web::actix::*;
 use diesel::{Connection, ConnectionError, PgConnection};
 
 pub mod searches;
+pub mod about;
 
 type DbConn = PgConnection;
 
