@@ -143,6 +143,10 @@ window.onload = function() {
     });
 
 
+    document.getElementById('primary-search').onclick = function(event) {
+        this.setSelectionRange(0, this.value.length);
+    };
+
     app.ports.edgeOut.subscribe(function(data) {
         console.log(data);
 

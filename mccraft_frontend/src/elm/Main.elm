@@ -4,13 +4,16 @@ import Browser
 import Debug
 import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (..)
+import Html.Attributes exposing (class, id, placeholder, src, type_)
 import Html.Events exposing (..)
 import Html.Keyed
+import Http
 import IntDict
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline exposing (required)
 import Json.Encode as Encode
 import Random
+import Url.Builder as Url
 
 
 
@@ -68,7 +71,7 @@ itemSpecDecoder : Decoder ItemSpec
 itemSpecDecoder =
     Decode.succeed ItemSpec
         |> required "item_id" Decode.int
-        |> required "item_name" Decode.string
+        |> required "human_name" Decode.string
         |> required "minecraft_id" Decode.string
         |> required "ty" itemType
         |> required "quantity" Decode.int
@@ -82,11 +85,18 @@ type alias Item =
     }
 
 
+type alias RenderableItem a =
+    { a
+        | minecraftId : String
+        , ty : ItemType
+    }
+
+
 itemDecoder : Decoder Item
 itemDecoder =
     Decode.succeed Item
-        |> required "item_id" Decode.int
-        |> required "item_name" Decode.string
+        |> required "id" Decode.int
+        |> required "human_name" Decode.string
         |> required "minecraft_id" Decode.string
         |> required "ty" itemType
 
@@ -144,12 +154,15 @@ type alias GraphEdge =
 
 
 type alias Model =
-    { graph : Graph Entity GraphEdge }
+    { graph : Graph Entity GraphEdge
+    , searchResults : List Item
+    , errorMessage : Maybe String
+    }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Graph.empty, Cmd.none )
+    ( Model Graph.empty [] Nothing, Cmd.none )
 
 
 
@@ -179,6 +192,9 @@ createNodeGenerator numNodes =
 type Msg
     = NewRandomLink RandLinkMsg
     | NewRandomNode RandNodeMsg
+    | SearchItem String
+    | ItemSearchResults (Result Http.Error (List Item))
+    | AddItem Item
 
 
 updateLinkMsg : RandLinkMsg -> Graph Entity GraphEdge -> ( Graph Entity GraphEdge, Cmd Msg )
@@ -240,6 +256,19 @@ updateNodeMsg msg model =
             ( newGraph, nodeOut (graphNodeEncoder newNode) )
 
 
+doItemSearch : String -> Model -> ( Model, Cmd Msg )
+doItemSearch term model =
+    if String.length term < 3 then
+        ( { model | searchResults = [] }, Cmd.none )
+
+    else
+        let
+            url =
+                Url.relative [ "search.json" ] [ Url.string "q" term ]
+        in
+        ( model, Http.send ItemSearchResults (Http.get url (Decode.list itemDecoder)) )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
@@ -257,6 +286,35 @@ update msg model =
                         updateNodeMsg nodeMsg model.graph
                 in
                 ( { model | graph = newGraph }, nodeResp )
+
+            SearchItem term ->
+                doItemSearch term model
+
+            ItemSearchResults res ->
+                case res of
+                    Ok item ->
+                        ( { model | searchResults = item }, Cmd.none )
+
+                    Err item ->
+                        --- TODO: display an error to the user. Build infrastructure like Flask's flashes?
+                        case item of
+                            Http.BadPayload errMsg _ ->
+                                ( { model | errorMessage = Just errMsg }, Cmd.none )
+
+                            Http.BadUrl errMsg ->
+                                ( { model | errorMessage = Just errMsg }, Cmd.none )
+
+                            Http.Timeout ->
+                                ( { model | errorMessage = Just "Network timeout while searching for items" }, Cmd.none )
+
+                            Http.NetworkError ->
+                                ( { model | errorMessage = Just "Network error while searching for items" }, Cmd.none )
+
+                            Http.BadStatus resp ->
+                                ( { model | errorMessage = Just "Bad status code" }, Cmd.none )
+
+            AddItem item ->
+                Debug.log (Debug.toString item) ( { model | searchResults = [] }, Cmd.none )
         )
 
 
@@ -264,18 +322,92 @@ update msg model =
 -- VIEW
 
 
-pageStructure : Html Msg -> Html Msg
-pageStructure inner =
-    div []
-        [ inner ]
+debugPane : Model -> Html Msg
+debugPane model =
+    let
+        baseContent =
+            [ button [ onClick (NewRandomLink CreateLink) ] [ text "New random link" ]
+            , button [ onClick (NewRandomNode CreateNode) ] [ text "New random node" ]
+            , text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graph)
+            ]
+
+        errorContent =
+            case model.errorMessage of
+                Nothing ->
+                    []
+
+                Just msg ->
+                    [ br [] [], code [] [ text msg ] ]
+    in
+    div [ class "debug-pane" ] (baseContent ++ errorContent)
+
+
+urlForItem : RenderableItem a -> String
+urlForItem ri =
+    let
+        formatMCID s =
+            String.append (String.replace ":" "_" s) ".png"
+    in
+    case ri.ty of
+        Fluid ->
+            Url.relative [ "images", "fluids", formatMCID ri.minecraftId ] []
+
+        ItemStack ->
+            Url.relative [ "images", "items", formatMCID ri.minecraftId ] []
+
+        UnknownType ->
+            Url.relative [ "static", "ohno.png" ] []
+
+
+searchResult : Int -> Item -> Html Msg
+searchResult index item =
+    div
+        [ class "search-result"
+        , class
+            (if modBy 2 index == 0 then
+                "even"
+
+             else
+                "odd"
+            )
+        , onClick (AddItem item)
+        ]
+        [ div [ class "search-result-left" ]
+            [ img
+                [ class "search-result-icon mc-texture"
+                , src (urlForItem item)
+                ]
+                [ text "Item preview" ]
+            , div
+                [ class "search-result-name" ]
+                [ text item.itemName ]
+            ]
+        , div
+            [ class "search-mcid" ]
+            [ text item.minecraftId ]
+        ]
+
+
+searchBox : Model -> Html Msg
+searchBox model =
+    div [ class "primary-search-wrapper" ]
+        [ input
+            [ id "primary-search"
+            , class "primary-search"
+            , type_ "text"
+            , placeholder "Item"
+            , onInput SearchItem
+            ]
+            []
+        , div [ class "search-results" ] (List.indexedMap searchResult model.searchResults)
+        ]
 
 
 view : Model -> Html Msg
 view model =
     div []
-        [ button [ onClick (NewRandomLink CreateLink) ] [ text "New random link" ]
-        , button [ onClick (NewRandomNode CreateNode) ] [ text "New random node" ]
-        , text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graph)
+        [ debugPane model
+        , searchBox model
         ]
 
 
