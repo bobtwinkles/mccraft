@@ -86,7 +86,9 @@ window.onload = function() {
             .attr('height', IMAGE_SIZE)
             .attr('transform',
                 'translate(' + (-IMAGE_SIZE / 2) + ',' + (-IMAGE_SIZE / 2) + ')')
-            .attr('xlink:href', '/images/items/minecraft_diamond_sword_0.png');
+            .attr('xlink:href', function(d) {
+                return d.imgUrl;
+            });
 
         node = node_groups.merge(node);
 
@@ -128,8 +130,6 @@ window.onload = function() {
     }
 
     function zoomed() {
-        console.log('Zoomed');
-        console.log(d3.event);
         root.attr('transform', d3.event.transform);
         checkForOutOfBounds();
     }
@@ -147,6 +147,7 @@ window.onload = function() {
         this.setSelectionRange(0, this.value.length);
     };
 
+    /*
     app.ports.edgeOut.subscribe(function(data) {
         console.log(data);
 
@@ -161,6 +162,7 @@ window.onload = function() {
 
         restart();
     });
+    */
 
     app.ports.nodeOut.subscribe(function(data) {
         console.log("Adding new node");

@@ -114,19 +114,12 @@ graphEdgeEncoder edge =
         ]
 
 
-graphNodeEncoder : Graph.Node Entity -> Encode.Value
+graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
 graphNodeEncoder ent =
     Encode.object
         [ ( "id", Encode.int ent.id )
         , ( "name", Encode.string ent.label.name )
-        ]
-
-
-graphEncoder : Graph Entity GraphEdge -> Encode.Value
-graphEncoder graph =
-    Encode.object
-        [ ( "edges", Encode.list graphEdgeEncoder (Graph.edges graph) )
-        , ( "nodes", Encode.list graphNodeEncoder (Graph.nodes graph) )
+        , ( "imgUrl", Encode.string ent.label.imgUrl )
         ]
 
 
@@ -140,13 +133,13 @@ port nodeOut : Encode.Value -> Cmd msg
 -- Model
 
 
-type alias Entity =
-    { rank : Int, name : String }
+type alias CraftingGraphNode =
+    { name : String, imgUrl : String }
 
 
-mkGraphNode : NodeId -> Int -> String -> Graph.Node Entity
-mkGraphNode id rank name =
-    Graph.Node id (Entity rank name)
+mkGraphNode : Item -> Graph.Node CraftingGraphNode
+mkGraphNode item =
+    Graph.Node item.id (CraftingGraphNode item.itemName (urlForItem item))
 
 
 type alias GraphEdge =
@@ -154,7 +147,7 @@ type alias GraphEdge =
 
 
 type alias Model =
-    { graph : Graph Entity GraphEdge
+    { graph : Graph CraftingGraphNode GraphEdge
     , searchResults : List Item
     , errorMessage : Maybe String
     }
@@ -169,91 +162,10 @@ init _ =
 -- Update
 
 
-type RandLinkMsg
-    = CreateLink
-    | ResultLink ( Int, Int )
-
-
-createLinkGenerator : Int -> Random.Generator ( Int, Int )
-createLinkGenerator numNodes =
-    Random.pair (Random.int 0 (numNodes - 1)) (Random.int 0 (numNodes - 2))
-
-
-type RandNodeMsg
-    = CreateNode
-    | ResultNode Int
-
-
-createNodeGenerator : Int -> Random.Generator Int
-createNodeGenerator numNodes =
-    Random.int numNodes (numNodes + 1)
-
-
 type Msg
-    = NewRandomLink RandLinkMsg
-    | NewRandomNode RandNodeMsg
-    | SearchItem String
+    = SearchItem String
     | ItemSearchResults (Result Http.Error (List Item))
     | AddItem Item
-
-
-updateLinkMsg : RandLinkMsg -> Graph Entity GraphEdge -> ( Graph Entity GraphEdge, Cmd Msg )
-updateLinkMsg msg model =
-    case msg of
-        CreateLink ->
-            ( model, Random.generate (\x -> NewRandomLink (ResultLink x)) (createLinkGenerator (Graph.size model)) )
-
-        ResultLink ( source, dest ) ->
-            let
-                target =
-                    if dest >= source then
-                        modBy (dest + 1) (Graph.size model)
-
-                    else
-                        dest
-
-                edgeLabel =
-                    { id = List.length (Graph.edges model)
-                    }
-
-                newGraph =
-                    Graph.update source
-                        (\x ->
-                            case x of
-                                Just ({ node, incoming, outgoing } as ctx) ->
-                                    Just { ctx | outgoing = IntDict.insert target edgeLabel outgoing }
-
-                                Nothing ->
-                                    Nothing
-                        )
-                        model
-
-                newEdge =
-                    Graph.Edge source target edgeLabel
-            in
-            ( newGraph, edgeOut (graphEdgeEncoder newEdge) )
-
-
-updateNodeMsg : RandNodeMsg -> Graph Entity GraphEdge -> ( Graph Entity GraphEdge, Cmd Msg )
-updateNodeMsg msg model =
-    case msg of
-        CreateNode ->
-            ( model, Random.generate (\x -> NewRandomNode (ResultNode x)) (createNodeGenerator (Graph.size model)) )
-
-        ResultNode n ->
-            let
-                newNode =
-                    mkGraphNode (Graph.size model) 0 (Debug.toString n)
-
-                newGraph =
-                    Graph.insert
-                        { node = newNode
-                        , incoming = IntDict.empty
-                        , outgoing = IntDict.empty
-                        }
-                        model
-            in
-            ( newGraph, nodeOut (graphNodeEncoder newNode) )
 
 
 doItemSearch : String -> Model -> ( Model, Cmd Msg )
@@ -273,20 +185,6 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
         (case msg of
-            NewRandomLink linkMsg ->
-                let
-                    ( newGraph, linkResp ) =
-                        updateLinkMsg linkMsg model.graph
-                in
-                ( { model | graph = newGraph }, linkResp )
-
-            NewRandomNode nodeMsg ->
-                let
-                    ( newGraph, nodeResp ) =
-                        updateNodeMsg nodeMsg model.graph
-                in
-                ( { model | graph = newGraph }, nodeResp )
-
             SearchItem term ->
                 doItemSearch term model
 
@@ -314,7 +212,20 @@ update msg model =
                                 ( { model | errorMessage = Just "Bad status code" }, Cmd.none )
 
             AddItem item ->
-                Debug.log (Debug.toString item) ( { model | searchResults = [] }, Cmd.none )
+                let
+                    itemNode =
+                        mkGraphNode item
+
+                    newGraph =
+                        Graph.insert 
+                            { node = itemNode
+                            , incoming = IntDict.empty
+                            , outgoing = IntDict.empty
+                            }model.graph
+                in
+                ( { model | searchResults = [], graph = newGraph }
+                , nodeOut (graphNodeEncoder itemNode)
+                )
         )
 
 
@@ -326,9 +237,7 @@ debugPane : Model -> Html Msg
 debugPane model =
     let
         baseContent =
-            [ button [ onClick (NewRandomLink CreateLink) ] [ text "New random link" ]
-            , button [ onClick (NewRandomNode CreateNode) ] [ text "New random node" ]
-            , text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graph)
+            [ text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graph)
             ]
 
         errorContent =
