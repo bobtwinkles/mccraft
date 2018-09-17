@@ -166,8 +166,12 @@ window.onload = function() {
 
     app.ports.nodeOut.subscribe(function(data) {
         console.log("Adding new node");
-        graph.nodes.push(data);
+        if (data.id in graph.nodeIdMap) {
+            console.log("Node already in graph, skipping");
+            return;
+        }
 
+        graph.nodes.push(data);
         graph.nodeIdMap[data.id] = data;
 
         restart();

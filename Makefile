@@ -15,8 +15,15 @@ WEB_SOURCES = $(shell find ./mccraft_frontend/src) $(glob ./mccraft_frontend/%.j
 
 web: mccraft_frontend/dist/main.js $(RUST_BINARY)
 
+
+ifneq ($(IMAGE_PATH),)
+  RUST_IMAGE_PATH=--image-path $(IMAGE_PATH)
+else
+  RUST_IMAGE_PATH=
+endif
+
 serve: web
-	$(RUST_BINARY) --serve-static mccraft_frontend/dist
+	$(RUST_BINARY) --static-path mccraft_frontend/dist $(RUST_IMAGE_PATH)
 
 mccraft_frontend/dist/main.js: $(WEB_SOURCES)
 	cd mccraft_frontend && ./node_modules/.bin/webpack --mode $(WEBPACK_MODE)

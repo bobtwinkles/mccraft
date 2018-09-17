@@ -14,6 +14,7 @@ import Json.Decode.Pipeline as Pipeline exposing (required)
 import Json.Encode as Encode
 import Random
 import Url.Builder as Url
+import Regex
 
 
 
@@ -250,12 +251,18 @@ debugPane model =
     in
     div [ class "debug-pane" ] (baseContent ++ errorContent)
 
+matchColon : Regex.Regex
+matchColon = Maybe.withDefault Regex.never <| Regex.fromString ":"
 
 urlForItem : RenderableItem a -> String
 urlForItem ri =
     let
         formatMCID s =
-            String.append (String.replace ":" "_" s) ".png"
+            let cleanedMCID =
+                    Regex.replace matchColon (\{match, index, number, submatches} -> if number == 1 then "/" else "_") s
+
+            in
+            String.append cleanedMCID ".png"
     in
     case ri.ty of
         Fluid ->
