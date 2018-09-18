@@ -4,10 +4,10 @@ use diesel::prelude::*;
 use fxhash::FxHashMap;
 use mccraft_core::schema::mccraft as schema;
 use mccraft_core::sql;
-use mccraft_core::web::{self, InputSlot, ItemSpec, PartialRecipe};
+use mccraft_core::web::{self, InputSlot, ItemSpec};
 
 /// Retrieve the entire recipe.
-pub struct Recipe(pub PartialRecipe);
+pub struct Recipe(pub i32);
 
 impl Message for Recipe {
     type Result = QueryResult<web::Recipe>;
@@ -22,7 +22,7 @@ impl Handler<Recipe> for DbExecutor {
         // Get all the data we need about the outputs.
         let outputs: Vec<ItemSpec> = outputs::table
             .inner_join(items::table)
-            .filter(outputs::recipe.eq(msg.0.recipe_id))
+            .filter(outputs::recipe.eq(msg.0))
             .select((
                 items::id,
                 items::human_name,
@@ -35,7 +35,7 @@ impl Handler<Recipe> for DbExecutor {
         let inputs: Vec<_> = crafting_components::table
             .inner_join(items::table)
             .inner_join(input_slots::table)
-            .filter(input_slots::for_recipe.eq(msg.0.recipe_id))
+            .filter(input_slots::for_recipe.eq(msg.0))
             .select((
                 input_slots::id,
                 items::id,
@@ -68,9 +68,6 @@ impl Handler<Recipe> for DbExecutor {
             .collect();
 
         Ok(web::Recipe {
-            id: msg.0.recipe_id,
-            machine_name: msg.0.machine_name,
-            machine_id: msg.0.machine_id,
             input_slots: inputs,
             outputs,
         })

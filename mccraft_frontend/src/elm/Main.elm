@@ -1,7 +1,9 @@
 port module Main exposing (Model, init, main)
 
+import Array exposing (Array)
 import Browser
 import Debug
+import Dict exposing (Dict)
 import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (..)
 import Html.Attributes exposing (class, id, placeholder, src, type_)
@@ -13,8 +15,8 @@ import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline exposing (required)
 import Json.Encode as Encode
 import Random
-import Url.Builder as Url
 import Regex
+import Url.Builder as Url
 
 
 
@@ -59,20 +61,67 @@ itemType =
     Decode.map matchItemType Decode.string
 
 
+type alias PartialRecipe =
+    { machineName : String
+    , machineId : Int
+    , recipeId : Int
+    }
+
+
+partialRecipeDecoder : Decoder PartialRecipe
+partialRecipeDecoder =
+    Decode.succeed PartialRecipe
+        |> required "machine_name" Decode.string
+        |> required "machine_id" Decode.int
+        |> required "recipe_id" Decode.int
+
+
+type alias RecipeData =
+    { inputs : List (List ItemSpec)
+    , outputs : List ItemSpec
+    }
+
+
+recipeDataDecoder : Decoder RecipeData
+recipeDataDecoder =
+    Decode.succeed RecipeData
+        |> required "input_slots" (Decode.list (Decode.list itemSpecDecoder))
+        |> required "outputs" (Decode.list itemSpecDecoder)
+
+
+type alias CompleteRecipe =
+    { machineName : String
+    , machineId : Int
+    , recipeId : Int
+    , inputs : List (List ItemSpec)
+    , outputs : List ItemSpec
+    }
+
+
+itemSlotDecoder : Decoder (List ItemSpec)
+itemSlotDecoder =
+    Decode.succeed (\items -> items)
+        |> required "items" (Decode.list itemSpecDecoder)
+
+
+completeRecipeDecoder : PartialRecipe -> Decoder CompleteRecipe
+completeRecipeDecoder partial =
+    Decode.succeed (\inputs outputs -> CompleteRecipe partial.machineName partial.machineId partial.recipeId inputs outputs)
+        |> required "input_slots" (Decode.list itemSlotDecoder)
+        |> required "outputs" (Decode.list itemSpecDecoder)
+
+
 type alias ItemSpec =
-    { id : Int
-    , itemName : String
-    , minecraftId : String
-    , ty : ItemType
+    { item : Item
     , quantity : Int
     }
 
 
 itemSpecDecoder : Decoder ItemSpec
 itemSpecDecoder =
-    Decode.succeed ItemSpec
+    Decode.succeed (\id hname mcid ty quant -> ItemSpec (Item id hname mcid ty) quant)
         |> required "item_id" Decode.int
-        |> required "human_name" Decode.string
+        |> required "item_name" Decode.string
         |> required "minecraft_id" Decode.string
         |> required "ty" itemType
         |> required "quantity" Decode.int
@@ -147,26 +196,63 @@ type alias GraphEdge =
     { id : Int }
 
 
+type alias SearchResult =
+    { item : Item
+    }
+
+
+mkSearchResult : Item -> SearchResult
+mkSearchResult i =
+    SearchResult i
+
+
+type alias RecipeModal =
+    { targetOutput : Item
+    , knownPartials : Dict Int (List PartialRecipe)
+    , shownCompletes : List CompleteRecipe
+    }
+
+
+mkRecipeModal : Item -> RecipeModal
+mkRecipeModal item =
+    RecipeModal item Dict.empty []
+
+
 type alias Model =
     { graph : Graph CraftingGraphNode GraphEdge
-    , searchResults : List Item
+    , searchResults : List SearchResult
     , errorMessage : Maybe String
+    , recipeModal : Maybe RecipeModal
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Graph.empty [] Nothing, Cmd.none )
+    ( Model Graph.empty [] Nothing Nothing, Cmd.none )
 
 
 
 -- Update
 
 
+type GridMsg
+    = AddItem Item
+
+
+type RecipeModalMsg
+    = SendPartialRequest
+    | ApplyPartials (List PartialRecipe)
+    | SelectMachine Int
+    | AddRecipe CompleteRecipe
+
+
 type Msg
     = SearchItem String
     | ItemSearchResults (Result Http.Error (List Item))
-    | AddItem Item
+    | GridMsg GridMsg
+    | PopRecipeModalFor Item
+    | RecipeModalMsg RecipeModalMsg
+    | FlashError String
 
 
 doItemSearch : String -> Model -> ( Model, Cmd Msg )
@@ -182,6 +268,145 @@ doItemSearch term model =
         ( model, Http.send ItemSearchResults (Http.get url (Decode.list itemDecoder)) )
 
 
+handleHttpError : Http.Error -> String
+handleHttpError e =
+    case e of
+        Http.BadPayload errMsg _ ->
+            errMsg
+
+        Http.BadUrl errMsg ->
+            errMsg
+
+        Http.Timeout ->
+            "Network timeout while searching for items"
+
+        Http.NetworkError ->
+            "Network error while searching for items"
+
+        Http.BadStatus resp ->
+            "Bad status code"
+
+
+updateRecipeModal : Model -> (RecipeModal -> ( RecipeModal, Cmd Msg )) -> ( Model, Cmd Msg )
+updateRecipeModal model f =
+    case model.recipeModal of
+        Just recipeModal ->
+            let
+                ( newModal, cmd ) =
+                    f recipeModal
+            in
+            ( { model | recipeModal = Just newModal }, cmd )
+
+        Nothing ->
+            ( model, Cmd.none )
+
+
+doSendPartialRequest : RecipeModal -> ( RecipeModal, Cmd Msg )
+doSendPartialRequest model =
+    let
+        processResponse machineList =
+            case machineList of
+                Ok list ->
+                    RecipeModalMsg (ApplyPartials list)
+
+                Err err ->
+                    FlashError (handleHttpError err)
+
+        url =
+            Url.relative [ "producers", String.append (String.fromInt model.targetOutput.id) ".json" ] []
+    in
+    ( model, Http.send processResponse (Http.get url (Decode.list partialRecipeDecoder)) )
+
+
+doApplyPartials : List PartialRecipe -> RecipeModal -> ( RecipeModal, Cmd Msg )
+doApplyPartials partials model =
+    let
+        partialsDict =
+            List.foldl
+                (\x d ->
+                    Dict.update
+                        x.machineId
+                        (\v -> Maybe.withDefault [] v |> (::) x |> Just)
+                        d
+                )
+                Dict.empty
+                partials
+
+        firstMachine =
+            List.head (Dict.keys partialsDict)
+
+        -- Dict.fromList (List.map (\x -> (x.machineName, )) partials)
+        updatedModel =
+            { model | knownPartials = partialsDict }
+    in
+    case firstMachine of
+        Just machine ->
+            doSelectMachine machine updatedModel
+
+        Nothing ->
+            ( updatedModel, Cmd.none )
+
+
+doSelectMachine : Int -> RecipeModal -> ( RecipeModal, Cmd Msg )
+doSelectMachine machine model =
+    let
+        processResponse recipeResponse =
+            case recipeResponse of
+                Ok recipe ->
+                    RecipeModalMsg (AddRecipe recipe)
+
+                Err err ->
+                    FlashError (handleHttpError err)
+
+        partials =
+            Maybe.withDefault [] <| Dict.get machine model.knownPartials
+
+        urls =
+            List.map
+                (\partial ->
+                    Url.relative
+                        [ "recipe"
+                        , String.append (String.fromInt partial.recipeId) ".json"
+                        ]
+                        []
+                )
+                partials
+
+        requests =
+            List.map (\( partial, url ) -> Http.get url (completeRecipeDecoder partial)) <| zip partials urls
+
+        commands =
+            List.map (\req -> Http.send processResponse req) requests
+    in
+    ( { model | shownCompletes = [] }, Cmd.batch commands )
+
+
+doAddRecipe : CompleteRecipe -> RecipeModal -> ( RecipeModal, Cmd Msg )
+doAddRecipe recipe model =
+    ( { model | shownCompletes = recipe :: model.shownCompletes }, Cmd.none )
+
+
+doRecipeModalMsg : RecipeModalMsg -> Model -> ( Model, Cmd Msg )
+doRecipeModalMsg msg model =
+    case msg of
+        SelectMachine machine ->
+            updateRecipeModal model <| doSelectMachine machine
+
+        AddRecipe recipe ->
+            updateRecipeModal model <| doAddRecipe recipe
+
+        SendPartialRequest ->
+            updateRecipeModal model <| doSendPartialRequest
+
+        ApplyPartials partials ->
+            updateRecipeModal model <| doApplyPartials partials
+
+
+updateModelForError : Model -> String -> Model
+updateModelForError model err =
+    { model | errorMessage = Just err }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
@@ -192,41 +417,41 @@ update msg model =
             ItemSearchResults res ->
                 case res of
                     Ok item ->
-                        ( { model | searchResults = item }, Cmd.none )
+                        ( { model | searchResults = List.map mkSearchResult item }, Cmd.none )
 
                     Err item ->
-                        --- TODO: display an error to the user. Build infrastructure like Flask's flashes?
-                        case item of
-                            Http.BadPayload errMsg _ ->
-                                ( { model | errorMessage = Just errMsg }, Cmd.none )
+                        ( updateModelForError model (handleHttpError item), Cmd.none )
 
-                            Http.BadUrl errMsg ->
-                                ( { model | errorMessage = Just errMsg }, Cmd.none )
-
-                            Http.Timeout ->
-                                ( { model | errorMessage = Just "Network timeout while searching for items" }, Cmd.none )
-
-                            Http.NetworkError ->
-                                ( { model | errorMessage = Just "Network error while searching for items" }, Cmd.none )
-
-                            Http.BadStatus resp ->
-                                ( { model | errorMessage = Just "Bad status code" }, Cmd.none )
-
-            AddItem item ->
+            GridMsg (AddItem item) ->
                 let
                     itemNode =
                         mkGraphNode item
 
                     newGraph =
-                        Graph.insert 
+                        Graph.insert
                             { node = itemNode
                             , incoming = IntDict.empty
                             , outgoing = IntDict.empty
-                            }model.graph
+                            }
+                            model.graph
                 in
                 ( { model | searchResults = [], graph = newGraph }
                 , nodeOut (graphNodeEncoder itemNode)
                 )
+
+            PopRecipeModalFor item ->
+                update (RecipeModalMsg SendPartialRequest)
+                    { model
+                        | recipeModal = Just <| mkRecipeModal item
+                        , searchResults = []
+                    }
+
+            RecipeModalMsg rmm ->
+                doRecipeModalMsg rmm model
+
+            --- TODO: display an error to the user. Build infrastructure like Flask's flashes?
+            FlashError emsg ->
+                ( updateModelForError model emsg, Cmd.none )
         )
 
 
@@ -251,22 +476,25 @@ debugPane model =
     in
     div [ class "debug-pane" ] (baseContent ++ errorContent)
 
+
 matchColon : Regex.Regex
-matchColon = Maybe.withDefault Regex.never <| Regex.fromString ":"
+matchColon =
+    Maybe.withDefault Regex.never <| Regex.fromString ":"
+
 
 urlForItem : RenderableItem a -> String
 urlForItem ri =
     let
         formatMCID s =
-            let cleanedMCID =
-                    Regex.replace matchColon (\{match, index, number, submatches} -> if number == 1 then "/" else "_") s
-
+            let
+                cleanedMCID =
+                    String.replace ":" "/" s
             in
             String.append cleanedMCID ".png"
     in
     case ri.ty of
         Fluid ->
-            Url.relative [ "images", "fluids", formatMCID ri.minecraftId ] []
+            Url.relative [ "images", "fluids", String.append (String.replace ":" "_" ri.minecraftId) ".png" ] []
 
         ItemStack ->
             Url.relative [ "images", "items", formatMCID ri.minecraftId ] []
@@ -275,9 +503,98 @@ urlForItem ri =
             Url.relative [ "static", "ohno.png" ] []
 
 
-searchResult : Int -> Item -> Html Msg
-searchResult index item =
-    div
+itemIcon : List (Attribute Msg) -> RenderableItem a -> Html Msg
+itemIcon extraAttrs item =
+    img (class "item-icon mc-text" :: (src (urlForItem item) :: extraAttrs)) [ text "Item preview " ]
+
+
+itemLine : List (Attribute Msg) -> Item -> Html Msg
+itemLine extraAttrs item =
+    div ([ class "item-line" ] ++ extraAttrs)
+        [ div [ class "item-line-left" ]
+            [ itemIcon [] item
+            , div
+                [ class "item-line-name" ]
+                [ text item.itemName ]
+            ]
+        , div
+            [ class "item-mcid" ]
+            [ text item.minecraftId ]
+        ]
+
+
+viewRecipeModalCraftingListEntry : RecipeModal -> List PartialRecipe -> Html Msg
+viewRecipeModalCraftingListEntry model recipes =
+    let
+        machineId =
+            List.head recipes |> Maybe.map (\y -> y.machineId) |> Maybe.withDefault -1
+
+        machineName =
+            List.head recipes |> Maybe.map (\y -> y.machineName) |> Maybe.withDefault "UNKNOWN MACHINE"
+
+        selectedMachine =
+            List.head model.shownCompletes |> Maybe.map (\y -> y.machineId) |> Maybe.withDefault -1
+
+        classes =
+            "modal-crafting-type"
+                :: (if machineId == selectedMachine then
+                        [ "selected" ]
+
+                    else
+                        []
+                   )
+
+        attrs =
+            onClick (RecipeModalMsg (SelectMachine machineId)) :: List.map class classes
+    in
+    div attrs
+        [ text machineName ]
+
+
+viewCompleteRecipe : RecipeModal -> CompleteRecipe -> Html Msg
+viewCompleteRecipe model recipe =
+    let
+        inputs =
+            td [ class "modal-recipe-inputs" ] (List.filterMap inputSlot recipe.inputs)
+
+        inputSlot s =
+            List.head s |> Maybe.map (\x -> itemIcon [] x.item)
+
+        outputs =
+            td [ class "modal-recipe-outputs" ] (List.map (\x -> itemIcon [] x.item) recipe.outputs)
+    in
+    tr [ class "modal-recipe" ]
+        [ inputs
+        , td [] [ i [ class "material-icons" ] [ text "arrow_right_alt" ] ]
+        , outputs
+        ]
+
+
+viewRecipeModal : RecipeModal -> Html Msg
+viewRecipeModal modal =
+    div [ class "modal" ]
+        [ div [ class "modal-content" ]
+            [ div [ class "modal-header" ] [ itemLine [] modal.targetOutput, i [ class "material-icons" ] [ text "close" ] ]
+            , div [ class "modal-body" ]
+                [ div [ class "modal-left" ]
+                    (List.map
+                        (viewRecipeModalCraftingListEntry modal)
+                        (Dict.values modal.knownPartials)
+                    )
+                , div [ class "modal-right" ]
+                    [ table [] (List.map (viewCompleteRecipe modal) modal.shownCompletes)
+                    ]
+                ]
+            , div [ class "modal-footer" ]
+                [ text (String.fromInt modal.targetOutput.id)
+                ]
+            ]
+        ]
+
+
+searchResult : Int -> SearchResult -> Html Msg
+searchResult index result =
+    itemLine
         [ class "search-result"
         , class
             (if modBy 2 index == 0 then
@@ -286,22 +603,9 @@ searchResult index item =
              else
                 "odd"
             )
-        , onClick (AddItem item)
+        , onClick (PopRecipeModalFor result.item)
         ]
-        [ div [ class "search-result-left" ]
-            [ img
-                [ class "search-result-icon mc-texture"
-                , src (urlForItem item)
-                ]
-                [ text "Item preview" ]
-            , div
-                [ class "search-result-name" ]
-                [ text item.itemName ]
-            ]
-        , div
-            [ class "search-mcid" ]
-            [ text item.minecraftId ]
-        ]
+        result.item
 
 
 searchBox : Model -> Html Msg
@@ -321,10 +625,21 @@ searchBox model =
 
 view : Model -> Html Msg
 view model =
+    let
+        recipeModal =
+            case model.recipeModal of
+                Just modal ->
+                    [ viewRecipeModal modal ]
+
+                Nothing ->
+                    []
+    in
     div []
-        [ debugPane model
-        , searchBox model
-        ]
+        ([ debugPane model
+         , searchBox model
+         ]
+            ++ recipeModal
+        )
 
 
 
@@ -334,3 +649,12 @@ view model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.none
+
+
+
+-- Utility functions
+
+
+zip : List a -> List b -> List ( a, b )
+zip =
+    List.map2 (\a b -> ( a, b ))

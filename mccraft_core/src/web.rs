@@ -23,15 +23,9 @@ pub struct InputSlot {
     pub items: Vec<ItemSpec>,
 }
 
-/// A recipe, including the machine that creates it and its inputs/outputs
+/// The data required to complete a PartialRecipe
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Recipe {
-    /// Internal ID # for this recipe
-    pub id: i32,
-    /// Human-readable machine name
-    pub machine_name: String,
-    /// Machine ID, potentially useful to have in the frontend.
-    pub machine_id: i32,
     /// The inputs to the recipe
     pub input_slots: Vec<InputSlot>,
     /// The things produced by this recipe

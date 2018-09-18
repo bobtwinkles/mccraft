@@ -64,6 +64,14 @@ fn item_info(req: &HttpRequest<AppState>) -> impl Responder {
         .responder()
 }
 
+fn complete_recipe(req: &HttpRequest<AppState>) -> impl Responder {
+    let dbref = req.state().db.clone();
+    futures::future::result(Path::<i32>::extract(req))
+        .and_then(move |path| dbref.send(db::about::Recipe(path.into_inner())).from_err())
+        .and_then(json_response)
+        .responder()
+}
+
 #[derive(Deserialize)]
 pub struct SearchRequest {
     q: String,
@@ -81,8 +89,7 @@ fn search_for_item(req: &HttpRequest<AppState>) -> impl Responder {
                     name: query.q,
                     offset: query.offset.unwrap_or(0),
                     limit: query.limit.unwrap_or(10),
-                })
-                .from_err()
+                }).from_err()
         }).and_then(json_response)
         .responder()
 }
@@ -121,6 +128,8 @@ fn start_server(listen_addr: &str, server_configuration: ServerConfiguration) {
                 r.method(http::Method::GET).f(recipes_for_item)
             }).resource("/items/{id}.json", |r| {
                 r.method(http::Method::GET).f(item_info)
+            }).resource("/recipe/{id}.json", |r| {
+                r.method(http::Method::GET).f(complete_recipe)
             }).resource("/search.json", |r| {
                 r.method(http::Method::GET).f(search_for_item)
             });
