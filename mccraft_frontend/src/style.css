@@ -69,6 +69,7 @@ svg img {
     background: #ededed;
     border-bottom: #c0c0c0 solid 2px;
     border-radius: 4px;
+    cursor: pointer;
 }
 
 .item-line {
@@ -144,6 +145,10 @@ svg img {
     width: 100%;
 }
 
+.modal-close {
+    cursor: pointer;
+}
+
 .modal-body {
     display: flex;
 }
@@ -157,6 +162,7 @@ svg img {
     display: flex;
     border-bottom: 2px solid lightgrey;
     padding: 0px 10px;
+    cursor: pointer;
 }
 
 .modal-crafting-type.selected {
@@ -166,6 +172,7 @@ svg img {
 .modal-right {
     width: 100%;
     padding: 10px;
+    background: darkgrey;
 }
 
 .modal-right>table {

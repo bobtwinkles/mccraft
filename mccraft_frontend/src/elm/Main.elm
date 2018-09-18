@@ -244,6 +244,7 @@ type RecipeModalMsg
     | ApplyPartials (List PartialRecipe)
     | SelectMachine Int
     | AddRecipe CompleteRecipe
+    | CancelRecipeModal
 
 
 type Msg
@@ -400,6 +401,9 @@ doRecipeModalMsg msg model =
 
         ApplyPartials partials ->
             updateRecipeModal model <| doApplyPartials partials
+
+        CancelRecipeModal ->
+            ( { model | recipeModal = Nothing }, Cmd.none )
 
 
 updateModelForError : Model -> String -> Model
@@ -574,7 +578,10 @@ viewRecipeModal : RecipeModal -> Html Msg
 viewRecipeModal modal =
     div [ class "modal" ]
         [ div [ class "modal-content" ]
-            [ div [ class "modal-header" ] [ itemLine [] modal.targetOutput, i [ class "material-icons" ] [ text "close" ] ]
+            [ div [ class "modal-header" ]
+                [ itemLine [] modal.targetOutput
+                , i [ class "material-icons modal-close", onClick (RecipeModalMsg CancelRecipeModal) ] [ text "close" ]
+                ]
             , div [ class "modal-body" ]
                 [ div [ class "modal-left" ]
                     (List.map
