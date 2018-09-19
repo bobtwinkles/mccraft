@@ -2,3 +2,5 @@
 */**/Cargo.lock
 **/*.rs.bk
 mccraft_frontend/node_modules
+mccraft.tar.gz
+vagrant.sshconfig
