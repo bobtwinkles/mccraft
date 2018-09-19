@@ -67,6 +67,6 @@ Vagrant.configure("2") do |config|
     yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
     yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-7-x86_64/pgdg-centos10-10-2.noarch.rpm
     yum-config-manager --enable epel epel-testing
-    yum install -y rust-1.29.0 cargo-1.29.0 postgresql10-devel
+    yum install -y rust-1.29.0 cargo-1.29.0 postgresql10-libs postgresql10-devel
   SHELL
 end

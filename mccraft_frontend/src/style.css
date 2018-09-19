@@ -124,7 +124,7 @@ svg img {
     top: 0;
     width: 100%;
     height: 100%;
-    overflow:  auto ;
+    overflow: auto;
     background-color: #000000cc;
 }
 
@@ -166,22 +166,35 @@ svg img {
 }
 
 .modal-crafting-type.selected {
-    background: darkgrey;
+    background: #cdcdcd;
 }
 
 .modal-right {
     width: 100%;
     padding: 10px;
-    background: darkgrey;
+    background: #cdcdcd;
+    display: flex;
+    flex-direction: column;
 }
 
+/*
 .modal-right>table {
     margin-left:auto;
     margin-right:auto;
     border-spacing: 0px;
 }
+*/
+
+.modal-recipe-list {
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+}
 
 .modal-recipe {
+    display: flex;
+    flex-direction: row;
+    padding: 8px;
 }
 
 .modal-recipe:hover {
@@ -190,10 +203,18 @@ svg img {
 }
 
 .modal-recipe-inputs {
+    display: flex;
 }
 
-.modal-recipe-outputs {
+.modal-recipe .item-icon {
+    display:flex;
 }
+
+.modal-recipe-arrow {
+    display: flex;
+}
+
+.modal-recipe-outputs {}
 
 .modal-footer {
     text-align: right;

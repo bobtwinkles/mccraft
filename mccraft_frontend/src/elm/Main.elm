@@ -559,17 +559,17 @@ viewCompleteRecipe : RecipeModal -> CompleteRecipe -> Html Msg
 viewCompleteRecipe model recipe =
     let
         inputs =
-            td [ class "modal-recipe-inputs" ] (List.filterMap inputSlot recipe.inputs)
+            div [ class "modal-recipe-inputs" ] (List.filterMap inputSlot recipe.inputs)
 
         inputSlot s =
             List.head s |> Maybe.map (\x -> itemIcon [] x.item)
 
         outputs =
-            td [ class "modal-recipe-outputs" ] (List.map (\x -> itemIcon [] x.item) recipe.outputs)
+            div [ class "modal-recipe-outputs" ] (List.map (\x -> itemIcon [] x.item) recipe.outputs)
     in
-    tr [ class "modal-recipe" ]
+    div [ class "modal-recipe" ]
         [ inputs
-        , td [] [ i [ class "material-icons" ] [ text "arrow_right_alt" ] ]
+        , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
         , outputs
         ]
 
@@ -589,7 +589,7 @@ viewRecipeModal modal =
                         (Dict.values modal.knownPartials)
                     )
                 , div [ class "modal-right" ]
-                    [ table [] (List.map (viewCompleteRecipe modal) modal.shownCompletes)
+                    [ div [ class "modal-recipe-list" ] (List.map (viewCompleteRecipe modal) modal.shownCompletes)
                     ]
                 ]
             , div [ class "modal-footer" ]
