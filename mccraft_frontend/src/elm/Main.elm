@@ -6,7 +6,7 @@ import Debug
 import Dict exposing (Dict)
 import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (..)
-import Html.Attributes exposing (class, id, placeholder, src, type_)
+import Html.Attributes exposing (alt, class, id, placeholder, src, type_)
 import Html.Events exposing (..)
 import Html.Keyed
 import Http
@@ -14,6 +14,7 @@ import IntDict
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline exposing (required)
 import Json.Encode as Encode
+import List.Extra as LE
 import Random
 import Regex
 import Url.Builder as Url
@@ -138,6 +139,7 @@ type alias Item =
 type alias RenderableItem a =
     { a
         | minecraftId : String
+        , itemName : String
         , ty : ItemType
     }
 
@@ -206,10 +208,79 @@ mkSearchResult i =
     SearchResult i
 
 
+type alias RecipeModalInputSlot =
+    { itemSpecs : Array ItemSpec
+    , scale : Int
+    , selected : Int
+    }
+
+
+type alias RecipeModalRecipe =
+    { inputSlots : List RecipeModalInputSlot
+    , outputs : List ItemSpec
+    , parent : CompleteRecipe
+    }
+
+
+modalRecipeFromComplete : CompleteRecipe -> RecipeModalRecipe
+modalRecipeFromComplete recipe =
+    let
+        inputs =
+            List.map convertInputList deduplicatedSlotList
+
+        outputs =
+            recipe.outputs
+
+        parent =
+            recipe
+
+        -- Deduplicate the slot list. This works by first sorting the items
+        -- within the input list on the basis of their ID, sorting the list of
+        -- slots by the ID of their items, and then grouping identical slots
+        -- together
+        deduplicatedSlotList =
+            List.map (\( x, y ) -> ( 1 + List.length y, x )) <|
+                LE.group (List.sortWith itemIDCmp (List.map (List.sortBy (\x -> x.item.id)) recipe.inputs))
+
+        itemIDCmp a b =
+            case ( a, b ) of
+                ( ai :: ar, bi :: br ) ->
+                    case compare ai.item.id bi.item.id of
+                        LT ->
+                            LT
+
+                        GT ->
+                            GT
+
+                        EQ ->
+                            itemIDCmp ar br
+
+                ( ai, [] ) ->
+                    case ai of
+                        [] ->
+                            EQ
+
+                        _ ->
+                            GT
+
+                ( [], bi ) ->
+                    case bi of
+                        [] ->
+                            EQ
+
+                        _ ->
+                            LT
+
+        convertInputList (scale, slot) =
+            RecipeModalInputSlot (Array.fromList slot) scale 0
+    in
+    RecipeModalRecipe inputs outputs parent
+
+
 type alias RecipeModal =
     { targetOutput : Item
     , knownPartials : Dict Int (List PartialRecipe)
-    , shownCompletes : List CompleteRecipe
+    , shownCompletes : List RecipeModalRecipe
     }
 
 
@@ -374,7 +445,7 @@ doSelectMachine machine model =
                 partials
 
         requests =
-            List.map (\( partial, url ) -> Http.get url (completeRecipeDecoder partial)) <| zip partials urls
+            List.map (\( partial, url ) -> Http.get url (completeRecipeDecoder partial)) <| LE.zip partials urls
 
         commands =
             List.map (\req -> Http.send processResponse req) requests
@@ -384,7 +455,7 @@ doSelectMachine machine model =
 
 doAddRecipe : CompleteRecipe -> RecipeModal -> ( RecipeModal, Cmd Msg )
 doAddRecipe recipe model =
-    ( { model | shownCompletes = recipe :: model.shownCompletes }, Cmd.none )
+    ( { model | shownCompletes = modalRecipeFromComplete recipe :: model.shownCompletes }, Cmd.none )
 
 
 doRecipeModalMsg : RecipeModalMsg -> Model -> ( Model, Cmd Msg )
@@ -509,7 +580,15 @@ urlForItem ri =
 
 itemIcon : List (Attribute Msg) -> RenderableItem a -> Html Msg
 itemIcon extraAttrs item =
-    img (class "item-icon mc-text" :: (src (urlForItem item) :: extraAttrs)) [ text "Item preview " ]
+    let
+        myAttrs =
+            [ class "item-icon"
+            , class "mc-text"
+            , src (urlForItem item)
+            , alt item.itemName
+            ]
+    in
+    img (myAttrs ++ extraAttrs) [ text item.itemName ]
 
 
 itemLine : List (Attribute Msg) -> Item -> Html Msg
@@ -537,7 +616,7 @@ viewRecipeModalCraftingListEntry model recipes =
             List.head recipes |> Maybe.map (\y -> y.machineName) |> Maybe.withDefault "UNKNOWN MACHINE"
 
         selectedMachine =
-            List.head model.shownCompletes |> Maybe.map (\y -> y.machineId) |> Maybe.withDefault -1
+            List.head model.shownCompletes |> Maybe.map (\y -> y.parent.machineId) |> Maybe.withDefault -1
 
         classes =
             "modal-crafting-type"
@@ -555,17 +634,29 @@ viewRecipeModalCraftingListEntry model recipes =
         [ text machineName ]
 
 
-viewCompleteRecipe : RecipeModal -> CompleteRecipe -> Html Msg
-viewCompleteRecipe model recipe =
+viewItemSpec : ItemSpec -> Html Msg
+viewItemSpec spec =
+    div [ class "item-spec" ]
+        [ itemIcon [] spec.item
+        , div [ class "item-spec-nr" ] [ text (String.fromInt spec.quantity) ]
+        ]
+
+
+viewRecipeModalInputSlot : RecipeModalInputSlot -> Html Msg
+viewRecipeModalInputSlot slot =
+    Array.get slot.selected slot.itemSpecs
+        |> Maybe.map (\spec -> viewItemSpec { spec | quantity = spec.quantity * slot.scale })
+        |> Maybe.withDefault (text "")
+
+
+viewModalRecipe : RecipeModalRecipe -> Html Msg
+viewModalRecipe recipe =
     let
         inputs =
-            div [ class "modal-recipe-inputs" ] (List.filterMap inputSlot recipe.inputs)
-
-        inputSlot s =
-            List.head s |> Maybe.map (\x -> itemIcon [] x.item)
+            div [ class "modal-recipe-inputs" ] (List.map viewRecipeModalInputSlot recipe.inputSlots)
 
         outputs =
-            div [ class "modal-recipe-outputs" ] (List.map (\x -> itemIcon [] x.item) recipe.outputs)
+            div [ class "modal-recipe-outputs" ] (List.map viewItemSpec recipe.outputs)
     in
     div [ class "modal-recipe" ]
         [ inputs
@@ -589,11 +680,12 @@ viewRecipeModal modal =
                         (Dict.values modal.knownPartials)
                     )
                 , div [ class "modal-right" ]
-                    [ div [ class "modal-recipe-list" ] (List.map (viewCompleteRecipe modal) modal.shownCompletes)
+                    [ div [ class "modal-recipe-list" ] (List.map viewModalRecipe modal.shownCompletes)
                     ]
                 ]
             , div [ class "modal-footer" ]
-                [ text (String.fromInt modal.targetOutput.id)
+                [ text "Output item ID: "
+                , text (String.fromInt modal.targetOutput.id)
                 ]
             ]
         ]
@@ -656,12 +748,3 @@ view model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.none
-
-
-
--- Utility functions
-
-
-zip : List a -> List b -> List ( a, b )
-zip =
-    List.map2 (\a b -> ( a, b ))
