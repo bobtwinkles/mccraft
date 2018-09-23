@@ -20,8 +20,9 @@ import PrimaryModel exposing (..)
 import Random
 import RecipeModal as RM
 import Regex
-import Url.Builder as Url
 import Search
+import Url.Builder as Url
+
 
 
 -- import Visualization.Force as Force exposing (State)
@@ -82,17 +83,22 @@ type alias GraphEdge =
     { id : Int }
 
 
+type CurrentModal
+    = NoModal
+    | RecipeModal RM.Model
+
+
 type alias Model =
     { graph : Graph CraftingGraphNode GraphEdge
-    , searchBar: Search.Model
+    , searchBar : Search.Model
     , errorMessage : Maybe String
-    , recipeModal : Maybe RM.Model
+    , modal : CurrentModal
     }
 
 
 init : () -> ( Model, Cmd Messages.Msg )
 init _ =
-    ( Model Graph.empty (Search.mkModel) Nothing Nothing, Cmd.none )
+    ( Model Graph.empty Search.mkModel Nothing NoModal, Cmd.none )
 
 
 
@@ -104,15 +110,16 @@ updateModelForError model err =
     { model | errorMessage = Just err }
 
 
-
 update : Messages.Msg -> Model -> ( Model, Cmd Messages.Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
         (case msg of
             Messages.SearchMsg x ->
-                let (newBar, cmd) =  Search.update x model.searchBar
+                let
+                    ( newBar, cmd ) =
+                        Search.update x model.searchBar
                 in
-                    ({model | searchBar = newBar}, cmd)
+                ( { model | searchBar = newBar }, cmd )
 
             Messages.GridMsg (Messages.AddItem item) ->
                 let
@@ -134,24 +141,24 @@ update msg model =
             Messages.PopRecipeModalFor item ->
                 update (Messages.RecipeModalMsg Messages.SendPartialRequest)
                     { model
-                        | recipeModal = Just <| RM.mkModel item
+                        | modal = RecipeModal <| RM.mkModel item
                         , searchBar = Search.mkModel
                     }
 
             Messages.RecipeModalMsg rmm ->
-                case model.recipeModal of
-                    Nothing ->
-                        ( model, Cmd.none )
-
-                    Just modal ->
+                case model.modal of
+                    RecipeModal modal ->
                         let
                             ( newModal, cmd ) =
                                 RM.update rmm modal
                         in
-                        ( { model | recipeModal = Just newModal }, cmd )
+                        ( { model | modal = RecipeModal newModal }, cmd )
+                    _ ->
+                        ( model, Cmd.none )
 
-            Messages.CancelRecipeModal ->
-                ( { model | recipeModal = Nothing }, Cmd.none )
+
+            Messages.ExitModal ->
+                ( { model | modal = NoModal }, Cmd.none )
 
             --- TODO: display an error to the user. Build infrastructure like Flask's flashes?
             Messages.FlashError emsg ->
@@ -189,19 +196,19 @@ matchColon =
 view : Model -> Html Messages.Msg
 view model =
     let
-        recipeModal =
-            case model.recipeModal of
-                Just modal ->
+        modalView =
+            case model.modal of
+                RecipeModal modal ->
                     [ RM.view modal ]
 
-                Nothing ->
+                NoModal ->
                     []
     in
     div []
         ([ debugPane model
          , Search.view model.searchBar
          ]
-            ++ recipeModal
+            ++ modalView
         )
 
 

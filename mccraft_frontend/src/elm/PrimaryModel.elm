@@ -17,14 +17,12 @@ import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Pipeline as Pipeline exposing (required)
 
 
-{-| Enumeration representing what type of item it is
--}
-
-
 
 -- Communication structures
 
 
+{-| Enumeration representing what type of item it is
+-}
 type ItemType
     = ItemStack
     | Fluid

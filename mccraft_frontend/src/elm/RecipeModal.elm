@@ -280,11 +280,11 @@ viewModalRecipe recipe =
 
 view : Model -> Html Msg
 view model =
-    div [ class "modal" ]
+    div [ class "modal"]
         [ div [ class "modal-content" ]
             [ div [ class "modal-header" ]
                 [ itemLine [] model.targetOutput
-                , i [ class "material-icons modal-close", onClick Messages.CancelRecipeModal ] [ text "close" ]
+                , i [ class "material-icons modal-close", onClick Messages.ExitModal ] [ text "close" ]
                 ]
             , div [ class "modal-body" ]
                 [ div [ class "modal-left" ]

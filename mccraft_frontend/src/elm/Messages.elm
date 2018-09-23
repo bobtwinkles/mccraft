@@ -31,6 +31,6 @@ type Msg
       -- Recipe modal messages
     | PopRecipeModalFor Item
     | RecipeModalMsg RecipeModalMsg
-    | CancelRecipeModal
       -- Error conditions
     | FlashError String
+    | ExitModal
