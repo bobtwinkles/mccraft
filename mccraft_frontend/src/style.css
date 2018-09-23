@@ -239,3 +239,38 @@ svg img {
     font-size: smaller;
     color: darkgrey;
 }
+
+.refinement-input-slot {
+    align-items: center;
+    border-radius: 4px;
+    border: 1px solid black;
+    display: flex;
+    flex-direction: column;
+}
+
+.refinement-input-slot-scale {
+    border-bottom: 1px solid black;
+    display: flex;
+    width: 100%;
+    justify-content: center;
+}
+
+.refinement-inputs {
+    display: flex;
+}
+
+.refinement-outputs {
+    display: flex;
+}
+
+.refinement-item-spec {
+    display: flex;
+    padding: 4px;
+}
+
+.refinement-recipe {
+    align-items: center;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}

@@ -1,24 +1,18 @@
 port module Main exposing (Model, init, main)
 
-import Array exposing (Array)
 import Browser
 import Debug
-import Dict exposing (Dict)
 import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (..)
 import Html.Attributes exposing (alt, class, id, placeholder, src, type_)
 import Html.Events exposing (..)
-import Html.Keyed
-import Http
 import IntDict
 import ItemRendering exposing (itemLine, urlForItem)
-import Json.Decode as Decode
 import Json.Encode as Encode
-import List.Extra as LE
 import Messages
 import PrimaryModel exposing (..)
-import Random
 import RecipeModal as RM
+import RefineModal as RFM
 import Regex
 import Search
 import Url.Builder as Url
@@ -86,6 +80,7 @@ type alias GraphEdge =
 type CurrentModal
     = NoModal
     | RecipeModal RM.Model
+    | RefinementModal RFM.Model
 
 
 type alias Model =
@@ -138,12 +133,15 @@ update msg model =
                 , nodeOut (graphNodeEncoder itemNode)
                 )
 
-            Messages.PopRecipeModalFor item ->
+            Messages.PopRecipeModal item ->
                 update (Messages.RecipeModalMsg Messages.SendPartialRequest)
                     { model
                         | modal = RecipeModal <| RM.mkModel item
                         , searchBar = Search.mkModel
                     }
+
+            Messages.PopRefinementModal target recipe ->
+                ( { model | modal = RefinementModal <| RFM.mkModel target recipe }, Cmd.none )
 
             Messages.RecipeModalMsg rmm ->
                 case model.modal of
@@ -153,9 +151,9 @@ update msg model =
                                 RM.update rmm modal
                         in
                         ( { model | modal = RecipeModal newModal }, cmd )
+
                     _ ->
                         ( model, Cmd.none )
-
 
             Messages.ExitModal ->
                 ( { model | modal = NoModal }, Cmd.none )
@@ -200,6 +198,9 @@ view model =
             case model.modal of
                 RecipeModal modal ->
                     [ RM.view modal ]
+
+                RefinementModal modal ->
+                    [ RFM.view modal ]
 
                 NoModal ->
                     []

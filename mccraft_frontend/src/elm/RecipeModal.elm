@@ -25,84 +25,15 @@ import Url.Builder as UB
 -- TYPES
 
 
-type alias InputSlot =
-    { itemSpecs : List ItemSpec
-    , scale : Int
-    , selected : Int
-    }
-
-
-type alias Recipe =
-    { inputSlots : List InputSlot
-    , outputs : List ItemSpec
-    , parent : CompleteRecipe
-    }
-
-
 type alias Model =
     { targetOutput : Item
     , knownPartials : Dict Int (List PartialRecipe)
-    , shownCompletes : List Recipe
+    , shownCompletes : List DedupedRecipe
     }
 
 
 
 -- Constructors
-
-
-mkRecipeFromComplete : CompleteRecipe -> Recipe
-mkRecipeFromComplete recipe =
-    let
-        inputs =
-            List.map convertInputList deduplicatedSlotList
-
-        outputs =
-            recipe.outputs
-
-        parent =
-            recipe
-
-        -- Deduplicate the slot list. This works by first sorting the items
-        -- within the input list on the basis of their ID, sorting the list of
-        -- slots by the ID of their items, and then grouping identical slots
-        -- together
-        deduplicatedSlotList =
-            List.map (\( x, y ) -> ( 1 + List.length y, x )) <|
-                LE.group (List.sortWith itemIDCmp (List.map (List.sortBy (\x -> x.item.id)) recipe.inputs))
-
-        itemIDCmp a b =
-            case ( a, b ) of
-                ( ai :: ar, bi :: br ) ->
-                    case compare ai.item.id bi.item.id of
-                        LT ->
-                            LT
-
-                        GT ->
-                            GT
-
-                        EQ ->
-                            itemIDCmp ar br
-
-                ( ai, [] ) ->
-                    case ai of
-                        [] ->
-                            EQ
-
-                        _ ->
-                            GT
-
-                ( [], bi ) ->
-                    case bi of
-                        [] ->
-                            EQ
-
-                        _ ->
-                            LT
-
-        convertInputList ( scale, slot ) =
-            InputSlot slot scale 0
-    in
-    Recipe inputs outputs parent
 
 
 mkModel : Item -> Model
@@ -196,7 +127,7 @@ doSelectMachine machine model =
 
 doAddRecipe : CompleteRecipe -> Model -> ( Model, Cmd Msg )
 doAddRecipe recipe model =
-    ( { model | shownCompletes = mkRecipeFromComplete recipe :: model.shownCompletes }, Cmd.none )
+    ( { model | shownCompletes = deduplicateSlots recipe :: model.shownCompletes }, Cmd.none )
 
 
 update : RecipeModalMsg -> Model -> ( Model, Cmd Msg )
@@ -262,8 +193,11 @@ viewRecipeModalInputSlot slot =
         |> Maybe.withDefault (text "")
 
 
-viewModalRecipe : Recipe -> Html Msg
-viewModalRecipe recipe =
+{-| Generate a view of a recipe. We need the focused item in order to pop an
+appropriate refinement modal if the user selects us.
+-}
+viewModalRecipe : Item -> DedupedRecipe -> Html Msg
+viewModalRecipe focus recipe =
     let
         inputs =
             div [ class "modal-recipe-inputs" ] (List.map viewRecipeModalInputSlot recipe.inputSlots)
@@ -271,7 +205,12 @@ viewModalRecipe recipe =
         outputs =
             div [ class "modal-recipe-outputs" ] (List.map viewItemSpec recipe.outputs)
     in
-    div [ class "modal-recipe" ]
+    div
+        [ class "modal-recipe"
+
+        -- TODO: if there is only one choice for all the slots, just insert directly
+        , onClick (Messages.PopRefinementModal focus recipe)
+        ]
         [ inputs
         , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
         , outputs
@@ -280,7 +219,7 @@ viewModalRecipe recipe =
 
 view : Model -> Html Msg
 view model =
-    div [ class "modal"]
+    div [ class "modal" ]
         [ div [ class "modal-content" ]
             [ div [ class "modal-header" ]
                 [ itemLine [] model.targetOutput
@@ -293,7 +232,8 @@ view model =
                         (Dict.values model.knownPartials)
                     )
                 , div [ class "modal-right" ]
-                    [ div [ class "modal-recipe-list" ] (List.map viewModalRecipe model.shownCompletes)
+                    [ div [ class "modal-recipe-list" ]
+                        (List.map (viewModalRecipe model.targetOutput) model.shownCompletes)
                     ]
                 ]
             , div [ class "modal-footer" ]

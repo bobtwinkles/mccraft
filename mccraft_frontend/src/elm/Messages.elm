@@ -2,11 +2,18 @@ module Messages exposing
     ( GridMsg(..)
     , Msg(..)
     , RecipeModalMsg(..)
+    , RefineModalMsg(..)
     , SearchMsg(..)
     )
 
 import Http
-import PrimaryModel exposing (CompleteRecipe, Item, PartialRecipe)
+import PrimaryModel
+    exposing
+        ( CompleteRecipe
+        , DedupedRecipe
+        , Item
+        , PartialRecipe
+        )
 
 
 type RecipeModalMsg
@@ -14,6 +21,10 @@ type RecipeModalMsg
     | ApplyPartials (List PartialRecipe)
     | SelectMachine Int
     | AddRecipe CompleteRecipe
+
+
+type RefineModalMsg
+    = SelectItem Int Int
 
 
 type SearchMsg
@@ -29,8 +40,10 @@ type Msg
     = SearchMsg SearchMsg
     | GridMsg GridMsg
       -- Recipe modal messages
-    | PopRecipeModalFor Item
+    | PopRecipeModal Item
     | RecipeModalMsg RecipeModalMsg
+      -- Refinement modal messages
+    | PopRefinementModal Item DedupedRecipe
       -- Error conditions
     | FlashError String
     | ExitModal

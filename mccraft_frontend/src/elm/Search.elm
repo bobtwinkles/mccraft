@@ -89,7 +89,7 @@ searchResult index result =
              else
                 "odd"
             )
-        , onClick (Messages.PopRecipeModalFor result.item)
+        , onClick (Messages.PopRecipeModal result.item)
         ]
         result.item
 
