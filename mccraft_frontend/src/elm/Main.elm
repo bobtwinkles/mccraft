@@ -15,6 +15,7 @@ import RecipeModal as RM
 import RefineModal as RFM
 import Regex
 import Search
+import Set exposing (Set)
 import Url.Builder as Url
 
 
@@ -84,7 +85,10 @@ type CurrentModal
 
 
 type alias Model =
-    { graph : Graph CraftingGraphNode GraphEdge
+    { graphContents :
+        { graph : Graph CraftingGraphNode GraphEdge
+        , items : Set Int
+        }
     , searchBar : Search.Model
     , errorMessage : Maybe String
     , modal : CurrentModal
@@ -93,7 +97,13 @@ type alias Model =
 
 init : () -> ( Model, Cmd Messages.Msg )
 init _ =
-    ( Model Graph.empty Search.mkModel Nothing NoModal, Cmd.none )
+    let
+        graphContents =
+            { graph = Graph.empty
+            , items = Set.empty
+            }
+    in
+    ( Model graphContents Search.mkModel Nothing NoModal, Cmd.none )
 
 
 
@@ -127,9 +137,17 @@ update msg model =
                             , incoming = IntDict.empty
                             , outgoing = IntDict.empty
                             }
-                            model.graph
+                            model.graphContents.graph
+
+                    newItems =
+                        Set.insert item.id model.graphContents.items
+
+                    newContents =
+                        { graph = newGraph
+                        , items = newItems
+                        }
                 in
-                ( { model | searchBar = Search.mkModel, graph = newGraph }
+                ( { model | searchBar = Search.mkModel, graphContents = newContents }
                 , nodeOut (graphNodeEncoder itemNode)
                 )
 
@@ -141,7 +159,7 @@ update msg model =
                     }
 
             Messages.PopRefinementModal target recipe ->
-                ( { model | modal = RefinementModal <| RFM.mkModel target recipe }, Cmd.none )
+                ( { model | modal = RefinementModal <| RFM.mkModel target recipe model.graphContents.items }, Cmd.none )
 
             Messages.RecipeModalMsg rmm ->
                 case model.modal of
@@ -172,7 +190,7 @@ debugPane : Model -> Html Messages.Msg
 debugPane model =
     let
         baseContent =
-            [ text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graph)
+            [ text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graphContents.graph)
             ]
 
         errorContent =

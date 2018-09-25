@@ -1,5 +1,7 @@
 module RefineModal exposing (Model, mkModel, update, view)
 
+import Array exposing (Array)
+import Set exposing(Set)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
@@ -12,9 +14,18 @@ import PrimaryModel exposing (DedupedRecipe, InputSlot, Item, ItemSpec)
 -- Types
 
 
+type alias InputSlotStack =
+    { selected : Maybe ItemSpec
+    , scale : Int
+    , availableInGrid : Array ItemSpec
+    , alternatives : Array ItemSpec
+    }
+
+
 type alias Model =
     { targetOutput : Item
     , recipe : DedupedRecipe
+    , inputSlots : Array InputSlotStack
     }
 
 
@@ -22,9 +33,36 @@ type alias Model =
 -- Initialization functions
 
 
-mkModel : Item -> DedupedRecipe -> Model
-mkModel =
-    Model
+mkModel : Item -> DedupedRecipe -> Set Int -> Model
+mkModel targetOutput recipe gridItemIds =
+    let
+        inputSlots =
+            Array.fromList (List.map convertInputSlot recipe.inputSlots)
+
+        convertInputSlot slot =
+            let
+                ( availableInGrid, alternatives ) =
+                    List.foldl
+                        (\is ( avail, alt ) ->
+                            if Set.member is.item.id gridItemIds then
+                                ( is :: avail, alt )
+
+                            else
+                                ( avail, is :: alt )
+                        )
+                        ( [], [] )
+                        slot.itemSpecs
+            in
+                case availableInGrid of
+                    inGrid :: rest  ->
+                        InputSlotStack (Just inGrid) slot.scale (Array.fromList rest) (Array.fromList alternatives)
+                    [] -> case alternatives of
+                              alt :: rest  ->
+                                  InputSlotStack (Just alt) slot.scale (Array.empty) (Array.fromList rest)
+                              [] ->
+                                  InputSlotStack (Nothing) slot.scale Array.empty Array.empty
+    in
+    Model targetOutput recipe inputSlots
 
 
 

@@ -81,6 +81,7 @@ itemIcon extraAttrs item =
             , class "mc-text"
             , src (urlForItem item)
             , alt item.itemName
+            , title item.itemName
             ]
     in
     img (myAttrs ++ extraAttrs) [ text item.itemName ]
