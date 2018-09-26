@@ -35,22 +35,42 @@ main =
 
 
 -- Ports
--- graphEdgeEncoder : Graph.Edge CraftingGraphEdge -> Encode.Value
--- graphEdgeEncoder edge =
---     Encode.object
---         [ ( "source", Encode.int edge.from )
---         , ( "target", Encode.int edge.to )
---         , ( "id", Encode.int edge.label.id )
---         ]
---
---
--- graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
--- graphNodeEncoder ent =
---     Encode.object
---         [ ( "id", Encode.int ent.id )
---         , ( "name", Encode.string ent.label.name )
---         , ( "imgUrl", Encode.string ent.label.imgUrl )
---         ]
+
+
+graphEdgeEncoder : Graph.Edge CraftingGraphEdge -> Encode.Value
+graphEdgeEncoder edge =
+    Encode.object
+        [ ( "source", Encode.int edge.from )
+        , ( "target", Encode.int edge.to )
+        , ( "production", Encode.int edge.label.production )
+        ]
+
+
+graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
+graphNodeEncoder ent =
+    case ent.label of
+        ItemGraphNode ign ->
+            Encode.object
+                [ ( "id", Encode.int ent.id )
+                , ( "ty", Encode.string "Item" )
+                , ( "name", Encode.string ign.item.itemName )
+                , ( "imgUrl", Encode.string (urlForItem ign.item) )
+                ]
+
+        RecipeGraphNode rgn ->
+            Encode.object
+                [ ( "id", Encode.int ent.id )
+                , ( "ty", Encode.string "Recipe" )
+                , ( "machineName", Encode.string rgn.machineName )
+                ]
+
+
+recipeEncoder : List Encode.Value -> List Encode.Value -> Encode.Value
+recipeEncoder nodes edges =
+    Encode.object
+        [ ( "nodes", Encode.list (\x -> x) nodes )
+        , ( "edges", Encode.list (\x -> x) edges )
+        ]
 
 
 port edgeOut : Encode.Value -> Cmd msg
@@ -59,12 +79,18 @@ port edgeOut : Encode.Value -> Cmd msg
 port nodeOut : Encode.Value -> Cmd msg
 
 
+port recipeOut : Encode.Value -> Cmd msg
+
+
+port itemClicked : (Int -> msg) -> Sub msg
+
+
 
 -- Model
 
 
 type alias ItemNode =
-    { name : String, imgUrl : String }
+    { item : Item }
 
 
 type alias RecipeNode =
@@ -78,7 +104,7 @@ type CraftingGraphNode
 
 mkItemNode : Item -> Graph.Node CraftingGraphNode
 mkItemNode item =
-    Graph.Node item.id (ItemGraphNode <| ItemNode item.itemName (urlForItem item))
+    Graph.Node item.id (ItemGraphNode <| ItemNode item)
 
 
 mkRecipeNode : CompleteRecipe -> Graph.Node CraftingGraphNode
@@ -147,32 +173,41 @@ doAddRecipe model recipe inputs outputs =
         insertWithDefault :
             List ItemSpec
             -> Graph CraftingGraphNode CraftingGraphEdge
-            -> Graph CraftingGraphNode CraftingGraphEdge
+            -> ( Graph CraftingGraphNode CraftingGraphEdge, List (Graph.Node CraftingGraphNode) )
         insertWithDefault vs g =
             List.foldl
-                (\v og ->
-                    Graph.update
+                (\v ( og, on ) ->
+                    ( Graph.update
                         v.item.id
                         (Maybe.withDefault (emptyNodeContext v.item) >> Just)
                         og
+                    , mkItemNode v.item :: on
+                    )
                 )
-                g
+                ( g, [] )
                 vs
 
         edgeDictFromList list =
             List.map (\is -> ( is.item.id, CraftingGraphEdge 0 is.quantity )) list
                 |> IntDict.fromList
 
+        inputEdges =
+            edgeDictFromList inputs
+
+        outputEdges =
+            edgeDictFromList outputs
+
+        recipeNode =
+            mkRecipeNode recipe
+
         recipeNodeContext =
-            Graph.NodeContext (mkRecipeNode recipe)
-                (edgeDictFromList inputs)
-                (edgeDictFromList outputs)
+            Graph.NodeContext recipeNode inputEdges outputEdges
 
         --- Insert all the inputs into the graph as nodes, possibly unconnected
-        graphWithInputNodes =
+        ( graphWithInputNodes, inputNodes ) =
             insertWithDefault inputs model.graphContents.graph
 
-        graphWithOutputNodes =
+        ( graphWithOutputNodes, outputNodes ) =
             insertWithDefault outputs graphWithInputNodes
 
         --- Make sure the recipe node is in the graph
@@ -192,6 +227,15 @@ doAddRecipe model recipe inputs outputs =
                 )
                 graphWithOutputNodes
 
+        encodedNodes =
+            graphNodeEncoder recipeNodeContext.node
+                :: List.map graphNodeEncoder outputNodes
+                ++ List.map graphNodeEncoder inputNodes
+
+        encodedEdges =
+            List.map (graphEdgeEncoder << (\( target, data ) -> Graph.Edge target recipeNode.id data)) (IntDict.toList inputEdges)
+                ++ List.map (graphEdgeEncoder << (\( target, data ) -> Graph.Edge recipeNode.id target data)) (IntDict.toList outputEdges)
+
         --- Update the set of items that are on the grid
         newItems : Set Int
         newItems =
@@ -210,8 +254,7 @@ doAddRecipe model recipe inputs outputs =
             }
     in
     ( { model | searchBar = Search.mkModel, modal = NoModal, graphContents = newContents }
-    , Cmd.none
-      -- nodeOut (graphNodeEncoder itemNode)
+    , recipeOut <| recipeEncoder encodedNodes encodedEdges
     )
 
 
@@ -268,7 +311,7 @@ debugPane : Model -> Html Messages.Msg
 debugPane model =
     let
         baseContent =
-            [ text (Graph.toString (Debug.toString >> Just) (Debug.toString >> Just) model.graphContents.graph)
+            [-- text (Graph.toString (Debug.toString >> Just) (Debug.toString >> Just) model.graphContents.graph)
             ]
 
         errorContent =
@@ -315,4 +358,18 @@ view model =
 
 subscriptions : Model -> Sub Messages.Msg
 subscriptions model =
-    Sub.none
+    itemClicked
+        (\iid ->
+            Graph.get iid model.graphContents.graph
+                |> Maybe.andThen
+                    (\ctx ->
+                        case ctx.node.label of
+                            ItemGraphNode ign ->
+                                Just ign.item
+
+                            _ ->
+                                Nothing
+                    )
+                |> Maybe.map Messages.PopRecipeModal
+                |> Maybe.withDefault Messages.ExitModal
+        )

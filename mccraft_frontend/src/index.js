@@ -1,5 +1,6 @@
 'use strict';
 const d3 = require('d3');
+const cola = require('webcola');
 
 const Elm = require('./elm/Main.elm');
 
@@ -11,26 +12,13 @@ window.onload = function() {
     const container = d3.select('#d3container');
     const svg = container.select('svg');
     var width = container.node().offsetWidth;
-    var height = document.body.clientHeight *9 / 10;
+    var height = document.body.clientHeight * 9 / 10;
     if (height < width) {
         width = height;
     }
     console.log(width, height);
     // svg.attr('width', width);
     // svg.attr('height', height);
-
-    const simulation = d3.forceSimulation();
-    simulation
-        .force('link', d3.forceLink()
-            .id(function(d) {
-                return d.id;
-            })
-            .distance(CIRCLE_RADIUS * 3))
-        .force('collision', d3.forceCollide(CIRCLE_RADIUS))
-        .force('charge', d3.forceManyBody())
-        .force('center', d3.forceCenter());
-    simulation.on('tick', ticked);
-    simulation.on('end', ticked);
 
     const graph = {
         edges: [],
@@ -39,21 +27,12 @@ window.onload = function() {
         edgeIdMap: {},
     };
 
+    var simulation = makeSim();
+
     const zoomBehavior = d3.zoom();
     zoomBehavior.on('zoom', zoomed);
 
     svg.call(zoomBehavior);
-
-    svg.append('pattern')
-        .attr('patternUnits', 'userSpaceOnUse')
-        .attr('id', 'bgpat')
-        .attr('width', 100)
-        .attr('height', 100)
-        .append('image')
-        .attr('xlink:href', '/static/static/img/textured-bg.png')
-        .attr('width', 100)
-        .attr('height', 100)
-        .attr('image-rendering', 'pixelated');
 
     svg.append('rect')
         .attr('x', -500)
@@ -66,6 +45,25 @@ window.onload = function() {
     var link = root.append('g').attr('class', 'links').selectAll('.link');
     var node = root.append('g').attr('class', 'nodes').selectAll('.node');
 
+    function makeSim() {
+        var sim = cola.d3adaptor(d3)
+            .avoidOverlaps(true)
+            .size([1000, 1000]);
+
+        sim
+            .symmetricDiffLinkLengths(CIRCLE_RADIUS)
+            .flowLayout("y", CIRCLE_RADIUS * 3)
+            .start();
+
+        sim.on('tick', ticked);
+        sim.on('end', ticked);
+
+        sim.nodes(graph.nodes);
+        sim.links(graph.edges);
+
+        return sim;
+    }
+
     function restart() {
         node = node.data(graph.nodes, function(d) {
             return d.id;
@@ -75,50 +73,70 @@ window.onload = function() {
             .append('g')
             .attr('class', 'node');
 
+        var item_nodes = node_groups
+            .filter(function(d) {
+                return d.ty === "Item";
+            });
+
+        // fill item nodes with an image icon of the item
         // Slightly less than sqrt(2) to get some breathing room
         const IMAGE_SIZE = CIRCLE_RADIUS * 1.1;
-        node_groups
+        item_nodes
             .append('circle')
             .attr('r', CIRCLE_RADIUS);
-        node_groups
+        item_nodes
             .append('image')
             .attr('width', IMAGE_SIZE)
             .attr('height', IMAGE_SIZE)
             .attr('transform',
                 'translate(' + (-IMAGE_SIZE / 2) + ',' + (-IMAGE_SIZE / 2) + ')')
+            .attr('image-rendering', 'optimizespeed')
             .attr('xlink:href', function(d) {
                 return d.imgUrl;
             });
 
+        item_nodes.on('click', function(d) {
+            app.ports.itemClicked.send(d.id);
+        });
+
+        var recipe_nodes = node_groups
+            .filter(function(d) {
+                return d.ty === "Recipe";
+            });
+        recipe_nodes.append('text')
+            .attr('class', 'grid-recipe-text')
+            .text(function(d) {
+                return d.machineName;
+            });
+
         node = node_groups.merge(node);
 
-        link = link.data(graph.edges, function(d) {
-            return d.id;
-        });
+        link = link.data(graph.edges, getEdgeId);
         link.exit().remove();
-        link = link.enter().append('line')
+        link = link.enter().append('path')
             .attr('class', 'link')
             .merge(link);
 
-        simulation.nodes(graph.nodes);
-        simulation.force('link').links(graph.edges);
-        simulation.alpha(1).restart();
+        simulation.start();
     }
 
 
     function ticked() {
         link
-            .attr("x1", function(d) {
-                return d.source.x;
-            })
-            .attr("y1", function(d) {
-                return d.source.y;
-            })
-            .attr("x2", function(d) {
-                return d.target.x;
-            })
-            .attr("y2", function(d) {
-                return d.target.y;
+            .attr('d', function (d) {
+                // mostly borrowed from the Cola D3 integration example
+                var deltaX = d.target.x - d.source.x,
+                    deltaY = d.target.y - d.source.y,
+                    dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY),
+                    normX = deltaX / dist,
+                    normY = deltaY / dist,
+                    sourcePadding = CIRCLE_RADIUS,
+                    targetPadding = CIRCLE_RADIUS + 12,
+                    sourceX = d.source.x + (sourcePadding * normX),
+                    sourceY = d.source.y + (sourcePadding * normY),
+                    targetX = d.target.x - (targetPadding * normX),
+                    targetY = d.target.y - (targetPadding * normY);
+                return 'M' + sourceX + ',' + sourceY + 'L' + targetX + ',' + targetY;
             });
 
         node
@@ -135,7 +153,7 @@ window.onload = function() {
     }
 
     function checkForOutOfBounds() {
-        
+        // TODO: display borders in the direction of the off-screen elements
     }
 
     const app = Elm.Elm.Main.init({
@@ -147,34 +165,36 @@ window.onload = function() {
         this.setSelectionRange(0, this.value.length);
     };
 
-    /*
-    app.ports.edgeOut.subscribe(function(data) {
+    app.ports.recipeOut.subscribe(function(data) {
         console.log(data);
 
-        data.source = graph.nodeIdMap[data.source];
-        data.target = graph.nodeIdMap[data.target];
-        if (data.source === undefined || data.target === undefined) {
-            console.log("Got invalid edge, bailing");
-            return;
+        for (var i = 0; i < data.nodes.length; i++) {
+            var node = data.nodes[i];
+            if (node.id in graph.nodeIdMap) {
+                console.log("Noe already in graph, skipping");
+                continue;
+            }
+
+            graph.nodes.push(node);
+            graph.nodeIdMap[node.id] = node;
         }
 
-        graph.edges.push(data);
+        for (var i = 0; i < data.edges.length; i++) {
+            var edge = data.edges[i];
 
-        restart();
-    });
-    */
+            edge.source = graph.nodeIdMap[edge.source];
+            edge.target = graph.nodeIdMap[edge.target];
 
-    app.ports.nodeOut.subscribe(function(data) {
-        console.log("Adding new node");
-        if (data.id in graph.nodeIdMap) {
-            console.log("Node already in graph, skipping");
-            return;
+            graph.edges.push(edge);
+
+            restart();
         }
-
-        graph.nodes.push(data);
-        graph.nodeIdMap[data.id] = data;
-
-        restart();
     });
+
+    function getEdgeId(edge) {
+        return "s" + (edge.source.id) + "t" + (edge.target.id);
+    }
+
+
     restart();
 };

@@ -38,6 +38,12 @@ svg img {
 .link {
     stroke-width: 4px;
     stroke: black;
+    marker-end: url(#arrowHead);
+}
+
+.grid-recipe-text {
+    text-align: center;
+    text-anchor: middle;
 }
 
 .debug-pane {
