@@ -204,12 +204,29 @@ viewModalRecipe focus recipe =
 
         outputs =
             div [ class "modal-recipe-outputs" ] (List.map viewItemSpec recipe.outputs)
+
+        clickMsg =
+            if List.all (.itemSpecs >> List.length >> (==) 1) recipe.inputSlots then
+                let
+                    smooshedInputs =
+                        List.filterMap
+                            (\x ->
+                                x.itemSpecs
+                                    |> List.head
+                                    |> Maybe.map (\is -> { is | quantity = is.quantity * x.scale })
+                            )
+                            recipe.inputSlots
+                in
+                Messages.GridMsg (Messages.AddRecipeToGrid recipe.parent smooshedInputs)
+
+            else
+                Messages.PopRefinementModal focus recipe
     in
     div
         [ class "modal-recipe"
 
         -- TODO: if there is only one choice for all the slots, just insert directly
-        , onClick (Messages.PopRefinementModal focus recipe)
+        , onClick clickMsg
         ]
         [ inputs
         , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
