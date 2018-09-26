@@ -1,13 +1,12 @@
 module RefineModal exposing (Model, mkModel, update, view)
 
-import Array exposing (Array)
-import Set exposing(Set)
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import ItemRendering exposing (itemIcon, itemLine)
 import Messages exposing (RefineModalMsg)
 import PrimaryModel exposing (DedupedRecipe, InputSlot, Item, ItemSpec)
+import Set exposing (Set)
 
 
 
@@ -17,15 +16,15 @@ import PrimaryModel exposing (DedupedRecipe, InputSlot, Item, ItemSpec)
 type alias InputSlotStack =
     { selected : Maybe ItemSpec
     , scale : Int
-    , availableInGrid : Array ItemSpec
-    , alternatives : Array ItemSpec
+    , availableInGrid : List ItemSpec
+    , alternatives : List ItemSpec
     }
 
 
 type alias Model =
     { targetOutput : Item
-    , recipe : DedupedRecipe
-    , inputSlots : Array InputSlotStack
+    , parent : DedupedRecipe
+    , inputSlots : List InputSlotStack
     }
 
 
@@ -37,7 +36,7 @@ mkModel : Item -> DedupedRecipe -> Set Int -> Model
 mkModel targetOutput recipe gridItemIds =
     let
         inputSlots =
-            Array.fromList (List.map convertInputSlot recipe.inputSlots)
+            List.map convertInputSlot recipe.inputSlots
 
         convertInputSlot slot =
             let
@@ -53,20 +52,23 @@ mkModel targetOutput recipe gridItemIds =
                         ( [], [] )
                         slot.itemSpecs
             in
-                case availableInGrid of
-                    inGrid :: rest  ->
-                        InputSlotStack (Just inGrid) slot.scale (Array.fromList rest) (Array.fromList alternatives)
-                    [] -> case alternatives of
-                              alt :: rest  ->
-                                  InputSlotStack (Just alt) slot.scale (Array.empty) (Array.fromList rest)
-                              [] ->
-                                  InputSlotStack (Nothing) slot.scale Array.empty Array.empty
+            case availableInGrid of
+                inGrid :: rest ->
+                    InputSlotStack (Just inGrid) slot.scale rest alternatives
+
+                [] ->
+                    case alternatives of
+                        alt :: rest ->
+                            InputSlotStack (Just alt) slot.scale [] rest
+
+                        [] ->
+                            InputSlotStack Nothing slot.scale [] []
     in
     Model targetOutput recipe inputSlots
 
 
 
--- Update functiosn
+-- Update functions
 
 
 update : RefineModalMsg -> Model -> ( Model, Cmd Messages.Msg )
@@ -80,21 +82,54 @@ update msg model =
 -- View functions
 
 
-viewItemSpec : ItemSpec -> Html Messages.Msg
-viewItemSpec is =
-    div [ class "refinement-item-spec" ]
+createAddMsg : Model -> Messages.GridMsg
+createAddMsg model =
+    let
+        inputs =
+            List.filterMap
+                (\x ->
+                    x.selected
+                        |> Maybe.map
+                            -- We need to adjust the quantity to incorporate the
+                            -- scale of the stack
+                            (\v -> { v | quantity = v.quantity * x.scale })
+                )
+                model.inputSlots
+    in
+    Messages.AddRecipeToGrid model.parent.parent inputs
+
+
+viewItemSpec : String -> ItemSpec -> Html Messages.Msg
+viewItemSpec clazz is =
+    div
+        [ class "refinement-item-spec"
+        , class clazz
+        ]
         [ itemIcon [] is.item
         , div [] [ text (String.fromInt is.quantity) ]
         ]
 
 
-viewInputSlot : InputSlot -> Html Messages.Msg
+viewInputSlot : InputSlotStack -> Html Messages.Msg
 viewInputSlot is =
+    let
+        selectedSpec =
+            Maybe.map (\x -> [ viewItemSpec "selected" x ]) is.selected
+                |> Maybe.withDefault []
+
+        inGridItems =
+            List.map (viewItemSpec "in-grid") is.availableInGrid
+
+        alternatives =
+            List.map (viewItemSpec "alts") is.alternatives
+    in
     div [ class "refinement-input-slot" ]
         ([ div [ class "refinement-input-slot-scale" ]
             [ text (String.fromInt is.scale) ]
          ]
-            ++ List.map viewItemSpec is.itemSpecs
+            ++ selectedSpec
+            ++ inGridItems
+            ++ alternatives
         )
 
 
@@ -107,9 +142,14 @@ view model =
                 , i [ class "material-icons modal-close", onClick Messages.ExitModal ] [ text "close" ]
                 ]
             , div [ class "refinement-recipe" ]
-                [ div [ class "refinement-inputs" ] (List.map viewInputSlot model.recipe.inputSlots)
+                [ div [ class "refinement-inputs" ] (List.map viewInputSlot model.inputSlots)
                 , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
-                , div [ class "refinement-outputs" ] (List.map viewItemSpec model.recipe.outputs)
+                , div [ class "refinement-outputs" ] (List.map (viewItemSpec "output") model.parent.outputs)
                 ]
+            , div
+                [ class "refinement-accept-button"
+                , onClick (Messages.GridMsg (createAddMsg model))
+                ]
+                [ text "Accept" ]
             ]
         ]

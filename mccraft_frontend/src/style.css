@@ -268,9 +268,36 @@ svg img {
     padding: 4px;
 }
 
+.refinement-item-spec.selected {
+    background: lightgreen;
+}
+
+.refinement-item-spec.in-grid {
+    background: lightblue;
+}
+
+.refinement-item-spec.alts {
+}
+
+.refinement-item-spec.output {
+}
+
 .refinement-recipe {
     align-items: center;
     display: flex;
     flex-direction: row;
     justify-content: center;
+}
+
+.refinement-accept-button{
+    border-radius: 4px;
+    border: 1px solid black;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: 8px;
+    text-align: center;
+}
+
+.refinement-accept-button:hover {
+    background: darkgrey;
 }

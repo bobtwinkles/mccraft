@@ -12,6 +12,7 @@ import PrimaryModel
         ( CompleteRecipe
         , DedupedRecipe
         , Item
+        , ItemSpec
         , PartialRecipe
         )
 
@@ -32,8 +33,10 @@ type SearchMsg
     | ItemSearchResults (List Item)
 
 
-type GridMsg
-    = AddItem Item
+type
+    GridMsg
+    -- Add a recipe. First list is the inputs, second is the outputs
+    = AddRecipeToGrid CompleteRecipe (List ItemSpec)
 
 
 type Msg

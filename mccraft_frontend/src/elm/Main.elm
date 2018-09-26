@@ -35,24 +35,22 @@ main =
 
 
 -- Ports
-
-
-graphEdgeEncoder : Graph.Edge GraphEdge -> Encode.Value
-graphEdgeEncoder edge =
-    Encode.object
-        [ ( "source", Encode.int edge.from )
-        , ( "target", Encode.int edge.to )
-        , ( "id", Encode.int edge.label.id )
-        ]
-
-
-graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
-graphNodeEncoder ent =
-    Encode.object
-        [ ( "id", Encode.int ent.id )
-        , ( "name", Encode.string ent.label.name )
-        , ( "imgUrl", Encode.string ent.label.imgUrl )
-        ]
+-- graphEdgeEncoder : Graph.Edge CraftingGraphEdge -> Encode.Value
+-- graphEdgeEncoder edge =
+--     Encode.object
+--         [ ( "source", Encode.int edge.from )
+--         , ( "target", Encode.int edge.to )
+--         , ( "id", Encode.int edge.label.id )
+--         ]
+--
+--
+-- graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
+-- graphNodeEncoder ent =
+--     Encode.object
+--         [ ( "id", Encode.int ent.id )
+--         , ( "name", Encode.string ent.label.name )
+--         , ( "imgUrl", Encode.string ent.label.imgUrl )
+--         ]
 
 
 port edgeOut : Encode.Value -> Cmd msg
@@ -65,17 +63,36 @@ port nodeOut : Encode.Value -> Cmd msg
 -- Model
 
 
-type alias CraftingGraphNode =
+type alias ItemNode =
     { name : String, imgUrl : String }
 
 
-mkGraphNode : Item -> Graph.Node CraftingGraphNode
-mkGraphNode item =
-    Graph.Node item.id (CraftingGraphNode item.itemName (urlForItem item))
+type alias RecipeNode =
+    { machineName : String }
 
 
-type alias GraphEdge =
-    { id : Int }
+type CraftingGraphNode
+    = ItemGraphNode ItemNode
+    | RecipeGraphNode RecipeNode
+
+
+mkItemNode : Item -> Graph.Node CraftingGraphNode
+mkItemNode item =
+    Graph.Node item.id (ItemGraphNode <| ItemNode item.itemName (urlForItem item))
+
+
+mkRecipeNode : CompleteRecipe -> Graph.Node CraftingGraphNode
+mkRecipeNode recipe =
+    Graph.Node -recipe.recipeId (RecipeGraphNode <| RecipeNode recipe.machineName)
+
+
+type alias CraftingGraphEdge =
+    -- Identifier for this edge
+    { id : Int
+
+    -- How much "to" is produced from each "from"
+    , production : Int
+    }
 
 
 type CurrentModal
@@ -86,7 +103,7 @@ type CurrentModal
 
 type alias Model =
     { graphContents :
-        { graph : Graph CraftingGraphNode GraphEdge
+        { graph : Graph CraftingGraphNode CraftingGraphEdge
         , items : Set Int
         }
     , searchBar : Search.Model
@@ -115,6 +132,89 @@ updateModelForError model err =
     { model | errorMessage = Just err }
 
 
+doAddRecipe :
+    Model
+    -> CompleteRecipe
+    -> List ItemSpec
+    -> List ItemSpec
+    -> ( Model, Cmd Messages.Msg )
+doAddRecipe model recipe inputs outputs =
+    let
+        emptyNodeContext : Item -> Graph.NodeContext CraftingGraphNode CraftingGraphEdge
+        emptyNodeContext item =
+            Graph.NodeContext (mkItemNode item) IntDict.empty IntDict.empty
+
+        insertWithDefault :
+            List ItemSpec
+            -> Graph CraftingGraphNode CraftingGraphEdge
+            -> Graph CraftingGraphNode CraftingGraphEdge
+        insertWithDefault vs g =
+            List.foldl
+                (\v og ->
+                    Graph.update
+                        v.item.id
+                        (Maybe.withDefault (emptyNodeContext v.item) >> Just)
+                        og
+                )
+                g
+                vs
+
+        edgeDictFromList list =
+            List.map (\is -> ( is.item.id, CraftingGraphEdge 0 is.quantity )) list
+                |> IntDict.fromList
+
+        recipeNodeContext =
+            Graph.NodeContext (mkRecipeNode recipe)
+                (edgeDictFromList inputs)
+                (edgeDictFromList outputs)
+
+        --- Insert all the inputs into the graph as nodes, possibly unconnected
+        graphWithInputNodes =
+            insertWithDefault inputs model.graphContents.graph
+
+        graphWithOutputNodes =
+            insertWithDefault outputs graphWithInputNodes
+
+        --- Make sure the recipe node is in the graph
+        graphWithRecipe =
+            Graph.update -recipe.recipeId
+                (\context ->
+                    Just <|
+                        case context of
+                            Nothing ->
+                                recipeNodeContext
+
+                            Just ctx ->
+                                { ctx
+                                    | incoming = IntDict.union ctx.incoming recipeNodeContext.incoming
+                                    , outgoing = IntDict.union ctx.outgoing recipeNodeContext.outgoing
+                                }
+                )
+                graphWithOutputNodes
+
+        --- Update the set of items that are on the grid
+        newItems : Set Int
+        newItems =
+            List.foldl
+                (\op oldSet -> Set.insert op.item.id oldSet)
+                (List.foldl
+                    (\inp oldSet -> Set.insert inp.item.id oldSet)
+                    model.graphContents.items
+                    inputs
+                )
+                outputs
+
+        newContents =
+            { graph = graphWithRecipe
+            , items = newItems
+            }
+    in
+    ( { model | searchBar = Search.mkModel, modal = NoModal, graphContents = newContents }
+    , Cmd.none
+      -- nodeOut (graphNodeEncoder itemNode)
+    )
+
+
 update : Messages.Msg -> Model -> ( Model, Cmd Messages.Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
@@ -126,30 +226,8 @@ update msg model =
                 in
                 ( { model | searchBar = newBar }, cmd )
 
-            Messages.GridMsg (Messages.AddItem item) ->
-                let
-                    itemNode =
-                        mkGraphNode item
-
-                    newGraph =
-                        Graph.insert
-                            { node = itemNode
-                            , incoming = IntDict.empty
-                            , outgoing = IntDict.empty
-                            }
-                            model.graphContents.graph
-
-                    newItems =
-                        Set.insert item.id model.graphContents.items
-
-                    newContents =
-                        { graph = newGraph
-                        , items = newItems
-                        }
-                in
-                ( { model | searchBar = Search.mkModel, graphContents = newContents }
-                , nodeOut (graphNodeEncoder itemNode)
-                )
+            Messages.GridMsg (Messages.AddRecipeToGrid recipe inputs) ->
+                doAddRecipe model recipe inputs recipe.outputs
 
             Messages.PopRecipeModal item ->
                 update (Messages.RecipeModalMsg Messages.SendPartialRequest)
@@ -190,7 +268,7 @@ debugPane : Model -> Html Messages.Msg
 debugPane model =
     let
         baseContent =
-            [ text (Graph.toString (\v -> Just v.name) (\e -> Just (Debug.toString e.id)) model.graphContents.graph)
+            [ text (Graph.toString (Debug.toString >> Just) (Debug.toString >> Just) model.graphContents.graph)
             ]
 
         errorContent =
