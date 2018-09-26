@@ -395,7 +395,7 @@ view model =
                 NoModal ->
                     []
     in
-    div []
+    div [ id "main" ]
         ([ debugPane model
          , Search.view model.searchBar
          ]
