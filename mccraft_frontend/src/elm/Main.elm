@@ -279,9 +279,6 @@ update msg model =
                         , searchBar = Search.mkModel
                     }
 
-            Messages.PopRefinementModal target recipe ->
-                ( { model | modal = RefinementModal <| RFM.mkModel target recipe model.graphContents.items }, Cmd.none )
-
             Messages.RecipeModalMsg rmm ->
                 case model.modal of
                     RecipeModal modal ->
@@ -290,6 +287,21 @@ update msg model =
                                 RM.update rmm modal
                         in
                         ( { model | modal = RecipeModal newModal }, cmd )
+
+                    _ ->
+                        ( model, Cmd.none )
+
+            Messages.PopRefinementModal target recipe ->
+                ( { model | modal = RefinementModal <| RFM.mkModel target recipe model.graphContents.items }, Cmd.none )
+
+            Messages.RefineModalMsg rmm ->
+                case model.modal of
+                    RefinementModal modal ->
+                        let
+                            ( newModal, cmd ) =
+                                RFM.update rmm modal
+                        in
+                        ( { model | modal = RefinementModal newModal }, cmd )
 
                     _ ->
                         ( model, Cmd.none )

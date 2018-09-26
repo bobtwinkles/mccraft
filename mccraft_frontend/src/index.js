@@ -53,7 +53,7 @@ window.onload = function() {
 
         sim
             .symmetricDiffLinkLengths(CIRCLE_RADIUS)
-            .flowLayout("y", CIRCLE_RADIUS * 3)
+//            .flowLayout("y", CIRCLE_RADIUS * 3)
             .start();
 
         sim.on('tick', ticked);

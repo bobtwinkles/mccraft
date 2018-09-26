@@ -4,6 +4,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import ItemRendering exposing (itemIcon, itemLine)
+import List.Extra as LE
 import Messages exposing (RefineModalMsg)
 import PrimaryModel exposing (DedupedRecipe, InputSlot, Item, ItemSpec)
 import Set exposing (Set)
@@ -54,12 +55,12 @@ mkModel targetOutput recipe gridItemIds =
             in
             case availableInGrid of
                 inGrid :: rest ->
-                    InputSlotStack (Just inGrid) slot.scale rest alternatives
+                    InputSlotStack (Just inGrid) slot.scale availableInGrid alternatives
 
                 [] ->
                     case alternatives of
                         alt :: rest ->
-                            InputSlotStack (Just alt) slot.scale [] rest
+                            InputSlotStack (Just alt) slot.scale [] alternatives
 
                         [] ->
                             InputSlotStack Nothing slot.scale [] []
@@ -74,8 +75,12 @@ mkModel targetOutput recipe gridItemIds =
 update : RefineModalMsg -> Model -> ( Model, Cmd Messages.Msg )
 update msg model =
     case msg of
-        Messages.SelectItem slotId newIndex ->
-            ( model, Cmd.none )
+        Messages.RefineToItem slotId newItem ->
+            let
+                newSlots =
+                    LE.updateAt slotId (\stk -> { stk | selected = Just newItem }) model.inputSlots
+            in
+            ( { model | inputSlots = newSlots }, Cmd.none )
 
 
 
@@ -99,29 +104,30 @@ createAddMsg model =
     Messages.AddRecipeToGrid model.parent.parent inputs
 
 
-viewItemSpec : String -> ItemSpec -> Html Messages.Msg
-viewItemSpec clazz is =
+viewItemSpec : List (Attribute Messages.Msg) -> ItemSpec -> Html Messages.Msg
+viewItemSpec extraAttrs is =
     div
-        [ class "refinement-item-spec"
-        , class clazz
-        ]
+        (class "refinement-item-spec" :: extraAttrs)
         [ itemIcon [] is.item
         , div [] [ text (String.fromInt is.quantity) ]
         ]
 
 
-viewInputSlot : InputSlotStack -> Html Messages.Msg
-viewInputSlot is =
+viewInputSlot : Int -> InputSlotStack -> Html Messages.Msg
+viewInputSlot idx is =
     let
+        selectableSpec clazz stk =
+            viewItemSpec [ class clazz, onClick (Messages.RefineModalMsg (Messages.RefineToItem idx stk)) ] stk
+
         selectedSpec =
-            Maybe.map (\x -> [ viewItemSpec "selected" x ]) is.selected
+            Maybe.map (\x -> [ viewItemSpec [ class "selected" ] x ]) is.selected
                 |> Maybe.withDefault []
 
         inGridItems =
-            List.map (viewItemSpec "in-grid") is.availableInGrid
+            List.map (selectableSpec "in-grid") is.availableInGrid
 
         alternatives =
-            List.map (viewItemSpec "alts") is.alternatives
+            List.map (selectableSpec "alt") is.alternatives
     in
     div [ class "refinement-input-slot" ]
         ([ div [ class "refinement-input-slot-scale" ]
@@ -142,9 +148,9 @@ view model =
                 , i [ class "material-icons modal-close", onClick Messages.ExitModal ] [ text "close" ]
                 ]
             , div [ class "refinement-recipe" ]
-                [ div [ class "refinement-inputs" ] (List.map viewInputSlot model.inputSlots)
+                [ div [ class "refinement-inputs" ] (List.indexedMap viewInputSlot model.inputSlots)
                 , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
-                , div [ class "refinement-outputs" ] (List.map (viewItemSpec "output") model.parent.outputs)
+                , div [ class "refinement-outputs" ] (List.map (viewItemSpec [ class "output" ]) model.parent.outputs)
                 ]
             , div
                 [ class "refinement-accept-button"

@@ -25,7 +25,7 @@ type RecipeModalMsg
 
 
 type RefineModalMsg
-    = SelectItem Int Int
+    = RefineToItem Int ItemSpec
 
 
 type SearchMsg
@@ -47,6 +47,7 @@ type Msg
     | RecipeModalMsg RecipeModalMsg
       -- Refinement modal messages
     | PopRefinementModal Item DedupedRecipe
+    | RefineModalMsg RefineModalMsg
       -- Error conditions
     | FlashError String
     | ExitModal
