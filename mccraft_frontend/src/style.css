@@ -31,6 +31,20 @@ body {
     height: 100%;
 }
 
+.sidebar-outputs {
+}
+
+.sidebar-heading {
+    padding-left: 0.5em;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    border-bottom: 2px solid lightgrey;
+}
+
+.sidebar-inputs > .item-line:hover {
+    background: darkgrey;
+}
+
 svg img {
     image-rendering: pixelated;
 }
@@ -123,6 +137,7 @@ svg img {
     color: #404040;
     flex-shrink: 1;
     text-overflow: ellipsis;
+    padding-left: 1em;
 }
 
 .mc-texture {

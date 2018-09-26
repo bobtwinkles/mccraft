@@ -337,9 +337,48 @@ debugPane model =
     div [ class "debug-pane" ] (baseContent ++ errorContent)
 
 
-matchColon : Regex.Regex
-matchColon =
-    Maybe.withDefault Regex.never <| Regex.fromString ":"
+viewEdgeItems : Graph CraftingGraphNode CraftingGraphEdge -> List (Html Messages.Msg)
+viewEdgeItems graph =
+    let
+        ( inputs, outputs ) =
+            Graph.fold
+                (\ctx ( inp, outp ) ->
+                    if IntDict.size ctx.incoming == 0 then
+                        ( ctx.node.label :: inp, outp )
+
+                    else if IntDict.size ctx.outgoing == 0 then
+                        ( inp, ctx.node.label :: outp )
+
+                    else
+                        ( inp, outp )
+                )
+                ( [], [] )
+                graph
+
+        itemsOnly =
+            List.filterMap
+                (\x ->
+                    case x of
+                        ItemGraphNode ign ->
+                            Just ign.item
+
+                        _ ->
+                            Nothing
+                )
+
+        inputItems =
+            itemsOnly inputs
+
+        outputItems =
+            itemsOnly outputs
+    in
+    [ div [ class "sidebar-inputs" ]
+        (div [ class "sidebar-heading" ] [ text "Inputs" ]
+            :: List.map (\x -> itemLine [ onClick (Messages.PopRecipeModal x) ] x) inputItems
+        )
+    , div [ class "sidebar-outputs" ]
+        (div [ class "sidebar-heading" ] [ text "Outputs" ] :: List.map (itemLine []) outputItems)
+    ]
 
 
 view : Model -> Html Messages.Msg
@@ -360,6 +399,7 @@ view model =
         ([ debugPane model
          , Search.view model.searchBar
          ]
+            ++ viewEdgeItems model.graphContents.graph
             ++ modalView
         )
 
