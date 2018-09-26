@@ -48,6 +48,7 @@ window.onload = function() {
     function makeSim() {
         var sim = cola.d3adaptor(d3)
             .avoidOverlaps(true)
+            .defaultNodeSize(2.5 * CIRCLE_RADIUS)
             .size([1000, 1000]);
 
         sim
@@ -98,6 +99,8 @@ window.onload = function() {
         item_nodes.on('click', function(d) {
             app.ports.itemClicked.send(d.id);
         });
+
+        item_nodes.call(simulation.drag);
 
         var recipe_nodes = node_groups
             .filter(function(d) {
