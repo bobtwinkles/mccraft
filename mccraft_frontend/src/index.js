@@ -34,16 +34,21 @@ window.onload = function() {
 
     svg.call(zoomBehavior);
 
-    svg.append('rect')
-        .attr('x', -500)
-        .attr('y', -500)
-        .attr('width', 1000)
-        .attr('height', 1000)
-        .attr('fill', 'url(#bgpat)');
-
     var root = svg.append('g');
     var link = root.append('g').attr('class', 'links').selectAll('.link');
     var node = root.append('g').attr('class', 'nodes').selectAll('.node');
+
+    svg.append('g')
+        .append('rect')
+        .attr('x', 5)
+        .attr('y', 5)
+        .attr('width', 30)
+        .attr('height', 30)
+        .attr('fill', '#000')
+        .on('click', function(d) {
+            svg.transition(5)
+                .call(zoomBehavior.transform, d3.zoomIdentity);
+        });
 
     function makeSim() {
         var sim = cola.d3adaptor(d3)
