@@ -100,6 +100,10 @@ window.onload = function() {
             .attr('xlink:href', function(d) {
                 return d.imgUrl;
             });
+        item_nodes.append('title')
+            .text(function (d) {
+                return d.name;
+            });
 
         item_nodes.on('click', function(d) {
             app.ports.itemClicked.send(d.id);
