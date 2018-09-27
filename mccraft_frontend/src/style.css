@@ -108,6 +108,10 @@ svg img {
     marker-end: url(#arrowHead);
 }
 
+.node {
+    cursor: pointer;
+}
+
 .grid-recipe-text {
     text-align: center;
     text-anchor: middle;
@@ -398,4 +402,18 @@ svg img {
 .recipe-rect {
     fill: white;
     stroke: black;
+}
+
+.confirm-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.confirm-container > .button {
+
+    display: flex;
+    flex-grow: 1;
+    justify-content: center;
+
 }

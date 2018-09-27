@@ -17,6 +17,7 @@ import PrimaryModel exposing (..)
 import RecipeModal as RM
 import RefineModal as RFM
 import Regex
+import RemoveRecipeModal as RRM
 import Search
 import Set exposing (Set)
 import Url.Builder as Url
@@ -134,16 +135,13 @@ graphEncoder graph =
         ]
 
 
-port edgeOut : Encode.Value -> Cmd msg
-
-
-port nodeOut : Encode.Value -> Cmd msg
-
-
 port graphOut : Encode.Value -> Cmd msg
 
 
 port itemClicked : (Int -> msg) -> Sub msg
+
+
+port removeRecipe : (Int -> msg) -> Sub msg
 
 
 
@@ -188,6 +186,7 @@ type CurrentModal
     | RefinementModal RFM.Model
     | ImportModal IOM.ImportModal
     | ExportModal IOM.ExportModal
+    | RemoveRecipeModal RRM.Model
 
 
 type alias Model =
@@ -289,6 +288,7 @@ doAddRecipe model recipe inputs outputs =
                                 }
                 )
                 graphWithOutputNodes
+
         --- Update the set of items that are on the grid
         newItems : Set Int
         newItems =
@@ -308,6 +308,40 @@ doAddRecipe model recipe inputs outputs =
     in
     ( { model | searchBar = Search.mkModel, modal = NoModal, graphContents = newContents }
     , graphOut <| graphEncoder graphWithRecipe
+    )
+
+
+doRemoveRecipe : Int -> Model -> ( Model, Cmd Messages.Msg )
+doRemoveRecipe recipe model =
+    let
+        noRecipe =
+            Graph.remove recipe model.graphContents.graph
+
+        gced =
+            List.foldl
+                (\nid ->
+                    Graph.update nid
+                        (\context ->
+                            case context of
+                                Just ctx ->
+                                    if (IntDict.size ctx.incoming + IntDict.size ctx.outgoing) == 0 then
+                                        Nothing
+
+                                    else
+                                        Just ctx
+
+                                Nothing ->
+                                    Nothing
+                        )
+                )
+                noRecipe
+                (Graph.nodeIds noRecipe)
+
+        oldContents =
+            model.graphContents
+    in
+    ( { model | modal = NoModal, graphContents = { oldContents | graph = gced } }
+    , graphOut <| graphEncoder gced
     )
 
 
@@ -364,6 +398,16 @@ doModalUpdate modal wrapModal updateModal model =
     ( { model | modal = wrapModal newModal }, cmd )
 
 
+doGridMsg : Messages.GridMsg -> Model -> ( Model, Cmd Messages.Msg )
+doGridMsg msg model =
+    case msg of
+        Messages.AddRecipeToGrid recipe inputs ->
+            doAddRecipe model recipe inputs recipe.outputs
+
+        Messages.RemoveRecipeFromGrid rid ->
+            doRemoveRecipe rid model
+
+
 update : Messages.Msg -> Model -> ( Model, Cmd Messages.Msg )
 update msg model =
     Debug.log ("Processing message " ++ Debug.toString msg)
@@ -375,8 +419,8 @@ update msg model =
                 in
                 ( { model | searchBar = newBar }, cmd )
 
-            Messages.GridMsg (Messages.AddRecipeToGrid recipe inputs) ->
-                doAddRecipe model recipe inputs recipe.outputs
+            Messages.GridMsg gm ->
+                doGridMsg gm model
 
             Messages.PopRecipeModal item ->
                 update (Messages.RecipeModalMsg Messages.SendPartialRequest)
@@ -425,6 +469,9 @@ update msg model =
                   }
                 , Cmd.none
                 )
+
+            Messages.PopRemoveRecipeModal x ->
+                ( { model | modal = RemoveRecipeModal (RRM.mkModel x) }, Cmd.none )
 
             Messages.ExitModal ->
                 ( { model | modal = NoModal }, Cmd.none )
@@ -526,6 +573,9 @@ view model =
                 ExportModal em ->
                     [ IOM.viewExport em ]
 
+                RemoveRecipeModal rrm ->
+                    [ RRM.view rrm ]
+
                 NoModal ->
                     []
 
@@ -550,18 +600,21 @@ view model =
 
 subscriptions : Model -> Sub Messages.Msg
 subscriptions model =
-    itemClicked
-        (\iid ->
-            Graph.get iid model.graphContents.graph
-                |> Maybe.andThen
-                    (\ctx ->
-                        case ctx.node.label of
-                            ItemGraphNode ign ->
-                                Just ign.item
+    Sub.batch
+        [ itemClicked
+            (\iid ->
+                Graph.get iid model.graphContents.graph
+                    |> Maybe.andThen
+                        (\ctx ->
+                            case ctx.node.label of
+                                ItemGraphNode ign ->
+                                    Just ign.item
 
-                            _ ->
-                                Nothing
-                    )
-                |> Maybe.map Messages.PopRecipeModal
-                |> Maybe.withDefault Messages.ExitModal
-        )
+                                _ ->
+                                    Nothing
+                        )
+                    |> Maybe.map Messages.PopRecipeModal
+                    |> Maybe.withDefault Messages.ExitModal
+            )
+        , removeRecipe Messages.PopRemoveRecipeModal
+        ]

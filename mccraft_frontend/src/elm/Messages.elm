@@ -41,6 +41,7 @@ type
     GridMsg
     -- Add a recipe. First list is the inputs, second is the outputs
     = AddRecipeToGrid CompleteRecipe (List ItemSpec)
+    | RemoveRecipeFromGrid Int
 
 
 type Msg
@@ -57,6 +58,8 @@ type Msg
     | ImportModalMsg ImportModalMsg
     | DoImport String
     | PopExportModal
+      -- Item removal modal
+    | PopRemoveRecipeModal Int
       -- Error conditions
     | FlashError String
     | ExitModal

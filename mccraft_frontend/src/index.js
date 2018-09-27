@@ -115,6 +115,10 @@ window.onload = function() {
                 return d.ty === "Recipe";
             });
 
+        recipe_nodes.on('click', function(d) {
+            app.ports.removeRecipe.send(d.id);
+        });
+
         recipe_nodes
             .append('rect');
 
@@ -204,20 +208,43 @@ window.onload = function() {
         this.setSelectionRange(0, this.value.length);
     };
 
-    app.ports.graphOut.subscribe(function(data) {
-        console.log(data);
+    var generation = 0;
 
+    app.ports.graphOut.subscribe(function(data) {
+        simulation.stop();
+
+        generation = generation + 1;
+
+        // Clear out the node and edge lists temporarily
+        graph.nodes.length = 0;
+        graph.edges.length = 0;
+
+        // Make sure all the incoming nodes are in the various lists
         for (var i = 0; i < data.nodes.length; i++) {
             var node = data.nodes[i];
+
             if (node.id in graph.nodeIdMap) {
-                console.log("Node already in graph, skipping");
-                continue;
+                graph.nodes.push(graph.nodeIdMap[node.id]);
+            } else {
+                graph.nodes.push(node);
+                graph.nodeIdMap[node.id] = node;
             }
 
-            graph.nodes.push(node);
-            graph.nodeIdMap[node.id] = node;
+            graph.nodeIdMap[node.id].generation = generation;
         }
 
+        // remove things that are not part of this generation of nodes from the
+        // map so they don't get referenced by accident
+        for (var nodeId in graph.nodeIdMap) {
+            if (graph.nodeIdMap.hasOwnProperty(nodeId)) {
+                if (graph.nodeIdMap[nodeId].generation === generation) {
+                    continue;
+                }
+                delete graph.nodeIdMap[nodeId];
+            }
+        }
+
+        // Do the same for the edges
         for (var i = 0; i < data.edges.length; i++) {
             var edge = data.edges[i];
 
@@ -227,15 +254,26 @@ window.onload = function() {
             var edgeID = getEdgeId(edge);
 
             if (edgeID in graph.edgeIdMap) {
-                console.log("Edge already in graph, skipping");
+                graph.edges.push(graph.edgeIdMap[edgeID]);
+            } else {
+                graph.edges.push(edge);
+                graph.edgeIdMap[edgeID] = edge;
             }
 
-            graph.edges.push(edge);
-            graph.edgeIdMap[edgeID] = edge;
+            graph.edgeIdMap[edgeID].generation = generation;
+        }
 
+        for (var edgeId in graph.edgeIdMap) {
+            if (graph.edgeIdMap.hasOwnProperty(edgeId)) {
+                if (graph.edgeIdMap[edgeId].generation === generation) {
+                    continue;
+                }
+                delete graph.edgeIdMap[edgeId];
+            }
         }
 
         restart();
+        simulation.start();
     });
 
     function getEdgeId(edge) {
