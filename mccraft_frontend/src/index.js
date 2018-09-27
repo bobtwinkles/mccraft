@@ -51,13 +51,11 @@ window.onload = function() {
         });
 
     function makeSim() {
-        var sim = cola.d3adaptor(d3)
-            .avoidOverlaps(true)
-            .defaultNodeSize(2.5 * CIRCLE_RADIUS)
-            .size([1000, 1000]);
+        var sim = cola.d3adaptor(d3);
 
         sim
-            .jaccardLinkLengths(CIRCLE_RADIUS * 4)
+            .flowLayout("y", CIRCLE_RADIUS * 3)
+            .jaccardLinkLengths(CIRCLE_RADIUS * 2)
             .start();
 
         sim.on('tick', ticked);
