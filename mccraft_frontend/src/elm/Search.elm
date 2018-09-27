@@ -97,13 +97,15 @@ searchResult index result =
 view : Model -> Html Messages.Msg
 view model =
     div [ class "primary-search-wrapper" ]
-        [ input
-            [ id "primary-search"
-            , class "primary-search"
-            , type_ "text"
-            , placeholder "Item"
-            , onInput (\x -> Messages.SearchMsg <| Messages.SearchItem x)
+        [ div [ class "search-inputs" ]
+            [ input
+                [ id "primary-search"
+                , class "primary-search"
+                , type_ "text"
+                , placeholder "Item"
+                , onInput (\x -> Messages.SearchMsg <| Messages.SearchItem x)
+                ]
+                []
             ]
-            []
         , div [ class "search-results" ] (List.indexedMap searchResult model.searchResults)
         ]

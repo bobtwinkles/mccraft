@@ -6,8 +6,11 @@ import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (..)
 import Html.Attributes exposing (alt, class, id, placeholder, src, type_)
 import Html.Events exposing (..)
+import IOModal as IOM
 import IntDict
 import ItemRendering exposing (itemLine, urlForItem)
+import Json.Decode as Decode
+import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 import Messages
 import PrimaryModel exposing (..)
@@ -46,14 +49,33 @@ graphEdgeEncoder edge =
         ]
 
 
+graphEdgeDecoder : Decode.Decoder (Graph.Edge CraftingGraphEdge)
+graphEdgeDecoder =
+    Decode.succeed (\s t p -> Graph.Edge s t (CraftingGraphEdge 0 p))
+        |> required "source" Decode.int
+        |> required "target" Decode.int
+        |> required "production" Decode.int
+
+
 graphNodeEncoder : Graph.Node CraftingGraphNode -> Encode.Value
 graphNodeEncoder ent =
     case ent.label of
         ItemGraphNode ign ->
+            let
+                itemClass =
+                    case ign.item.ty of
+                        ItemStack ->
+                            "Item"
+
+                        Fluid ->
+                            "Fluid"
+            in
             Encode.object
                 [ ( "id", Encode.int ent.id )
                 , ( "ty", Encode.string "Item" )
                 , ( "name", Encode.string ign.item.itemName )
+                , ( "mcid", Encode.string ign.item.minecraftId )
+                , ( "itemClass", Encode.string itemClass )
                 , ( "imgUrl", Encode.string (urlForItem ign.item) )
                 ]
 
@@ -65,8 +87,47 @@ graphNodeEncoder ent =
                 ]
 
 
-recipeEncoder : List Encode.Value -> List Encode.Value -> Encode.Value
-recipeEncoder nodes edges =
+graphNodeDecoder : Decode.Decoder (Graph.Node CraftingGraphNode)
+graphNodeDecoder =
+    let
+        itemStruct : Int -> String -> String -> PrimaryModel.ItemType -> Graph.Node CraftingGraphNode
+        itemStruct id name mcid cls =
+            mkItemNode <| { id = id, itemName = name, minecraftId = mcid, ty = cls }
+
+        recipeStruct : Int -> String -> Graph.Node CraftingGraphNode
+        recipeStruct id machineName =
+            Graph.Node id (RecipeGraphNode <| RecipeNode machineName)
+    in
+    Decode.field "ty" Decode.string
+        |> Decode.andThen
+            (\ty ->
+                case ty of
+                    "Item" ->
+                        Decode.succeed itemStruct
+                            |> required "id" Decode.int
+                            |> required "name" Decode.string
+                            |> required "mcid" Decode.string
+                            |> required "itemClass" PrimaryModel.itemTypeDecoder
+
+                    "Recipe" ->
+                        Decode.succeed recipeStruct
+                            |> required "id" Decode.int
+                            |> required "machineName" Decode.string
+
+                    _ ->
+                        Decode.fail <| "Unsupported item type " ++ ty
+            )
+
+
+graphEncoder : Graph CraftingGraphNode CraftingGraphEdge -> Encode.Value
+graphEncoder graph =
+    let
+        nodes =
+            List.map graphNodeEncoder (Graph.nodes graph)
+
+        edges =
+            List.map graphEdgeEncoder (Graph.edges graph)
+    in
     Encode.object
         [ ( "nodes", Encode.list (\x -> x) nodes )
         , ( "edges", Encode.list (\x -> x) edges )
@@ -79,7 +140,7 @@ port edgeOut : Encode.Value -> Cmd msg
 port nodeOut : Encode.Value -> Cmd msg
 
 
-port recipeOut : Encode.Value -> Cmd msg
+port graphOut : Encode.Value -> Cmd msg
 
 
 port itemClicked : (Int -> msg) -> Sub msg
@@ -125,6 +186,8 @@ type CurrentModal
     = NoModal
     | RecipeModal RM.Model
     | RefinementModal RFM.Model
+    | ImportModal IOM.ImportModal
+    | ExportModal IOM.ExportModal
 
 
 type alias Model =
@@ -226,16 +289,6 @@ doAddRecipe model recipe inputs outputs =
                                 }
                 )
                 graphWithOutputNodes
-
-        encodedNodes =
-            graphNodeEncoder recipeNodeContext.node
-                :: List.map graphNodeEncoder outputNodes
-                ++ List.map graphNodeEncoder inputNodes
-
-        encodedEdges =
-            List.map (graphEdgeEncoder << (\( target, data ) -> Graph.Edge target recipeNode.id data)) (IntDict.toList inputEdges)
-                ++ List.map (graphEdgeEncoder << (\( target, data ) -> Graph.Edge recipeNode.id target data)) (IntDict.toList outputEdges)
-
         --- Update the set of items that are on the grid
         newItems : Set Int
         newItems =
@@ -254,8 +307,61 @@ doAddRecipe model recipe inputs outputs =
             }
     in
     ( { model | searchBar = Search.mkModel, modal = NoModal, graphContents = newContents }
-    , recipeOut <| recipeEncoder encodedNodes encodedEdges
+    , graphOut <| graphEncoder graphWithRecipe
     )
+
+
+serializeGraph : Graph CraftingGraphNode CraftingGraphEdge -> String
+serializeGraph graph =
+    Encode.encode 0
+        (Encode.object
+            [ ( "edges", Encode.list graphEdgeEncoder (Graph.edges graph) )
+            , ( "nodes", Encode.list graphNodeEncoder (Graph.nodes graph) )
+            ]
+        )
+
+
+importFromString : String -> Result Decode.Error Model
+importFromString str =
+    let
+        objDecoder =
+            Decode.succeed (\edges nodes -> { edges = edges, nodes = nodes })
+                |> required "edges" (Decode.list graphEdgeDecoder)
+                |> required "nodes" (Decode.list graphNodeDecoder)
+
+        decoded =
+            Decode.decodeString objDecoder str
+
+        buildFromObj obj =
+            let
+                graph =
+                    Graph.fromNodesAndEdges obj.nodes obj.edges
+
+                items =
+                    Set.fromList
+                        (List.filterMap
+                            (\x ->
+                                if x.id > 0 then
+                                    Just x.id
+
+                                else
+                                    Nothing
+                            )
+                            obj.nodes
+                        )
+            in
+            Model { graph = graph, items = items } Search.mkModel Nothing NoModal
+    in
+    Result.map buildFromObj decoded
+
+
+doModalUpdate : a -> (a -> CurrentModal) -> (a -> ( a, Cmd Messages.Msg )) -> Model -> ( Model, Cmd Messages.Msg )
+doModalUpdate modal wrapModal updateModal model =
+    let
+        ( newModal, cmd ) =
+            updateModal modal
+    in
+    ( { model | modal = wrapModal newModal }, cmd )
 
 
 update : Messages.Msg -> Model -> ( Model, Cmd Messages.Msg )
@@ -282,11 +388,7 @@ update msg model =
             Messages.RecipeModalMsg rmm ->
                 case model.modal of
                     RecipeModal modal ->
-                        let
-                            ( newModal, cmd ) =
-                                RM.update rmm modal
-                        in
-                        ( { model | modal = RecipeModal newModal }, cmd )
+                        doModalUpdate modal RecipeModal (RM.update rmm) model
 
                     _ ->
                         ( model, Cmd.none )
@@ -297,17 +399,43 @@ update msg model =
             Messages.RefineModalMsg rmm ->
                 case model.modal of
                     RefinementModal modal ->
-                        let
-                            ( newModal, cmd ) =
-                                RFM.update rmm modal
-                        in
-                        ( { model | modal = RefinementModal newModal }, cmd )
+                        doModalUpdate modal RefinementModal (RFM.update rmm) model
 
                     _ ->
                         ( model, Cmd.none )
 
+            Messages.PopImportModal ->
+                ( { model | modal = ImportModal IOM.mkImport }, Cmd.none )
+
+            Messages.ImportModalMsg imm ->
+                case model.modal of
+                    ImportModal modal ->
+                        doModalUpdate modal ImportModal (IOM.updateImport imm) model
+
+                    _ ->
+                        ( model, Cmd.none )
+
+            Messages.PopExportModal ->
+                ( { model
+                    | modal =
+                        ExportModal
+                            (IOM.mkExport
+                                (serializeGraph model.graphContents.graph)
+                            )
+                  }
+                , Cmd.none
+                )
+
             Messages.ExitModal ->
                 ( { model | modal = NoModal }, Cmd.none )
+
+            Messages.DoImport s ->
+                case importFromString s of
+                    Err x ->
+                        ( updateModelForError model (Decode.errorToString x), Cmd.none )
+
+                    Ok v ->
+                        ( v, graphOut <| graphEncoder v.graphContents.graph )
 
             --- TODO: display an error to the user. Build infrastructure like Flask's flashes?
             Messages.FlashError emsg ->
@@ -392,14 +520,26 @@ view model =
                 RefinementModal modal ->
                     [ RFM.view modal ]
 
+                ImportModal im ->
+                    [ IOM.viewImport im ]
+
+                ExportModal em ->
+                    [ IOM.viewExport em ]
+
                 NoModal ->
                     []
+
+        saveLoadButtons =
+            [ div [ class "import-graph-button button", onClick Messages.PopImportModal ] [ text "Import" ]
+            , div [ class "export-graph-button button", onClick Messages.PopExportModal ] [ text "Export" ]
+            ]
     in
     div [ id "main" ]
         ([ debugPane model
          , Search.view model.searchBar
          ]
             ++ viewEdgeItems model.graphContents.graph
+            ++ saveLoadButtons
             ++ modalView
         )
 

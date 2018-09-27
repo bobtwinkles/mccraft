@@ -3,6 +3,7 @@ module Messages exposing
     , Msg(..)
     , RecipeModalMsg(..)
     , RefineModalMsg(..)
+    , ImportModalMsg(..)
     , SearchMsg(..)
     )
 
@@ -27,6 +28,9 @@ type RecipeModalMsg
 type RefineModalMsg
     = RefineToItem Int ItemSpec
 
+type ImportModalMsg
+    = ImportTextAreaUpdated String
+
 
 type SearchMsg
     = SearchItem String
@@ -48,6 +52,11 @@ type Msg
       -- Refinement modal messages
     | PopRefinementModal Item DedupedRecipe
     | RefineModalMsg RefineModalMsg
+      -- Import/Export modals
+    | PopImportModal
+    | ImportModalMsg ImportModalMsg
+    | DoImport String
+    | PopExportModal
       -- Error conditions
     | FlashError String
     | ExitModal

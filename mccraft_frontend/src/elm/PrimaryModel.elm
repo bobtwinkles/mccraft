@@ -11,6 +11,7 @@ module PrimaryModel exposing
     , handleHttpError
     , itemDecoder
     , partialRecipeDecoder
+    , itemTypeDecoder
     )
 
 import Html exposing (..)
@@ -30,7 +31,6 @@ import List.Extra as LE
 type ItemType
     = ItemStack
     | Fluid
-    | UnknownType
 
 
 {-| The part of a recipe that we get back initially. It only includes what
@@ -152,7 +152,7 @@ itemDecoder =
         |> required "id" Decode.int
         |> required "human_name" Decode.string
         |> required "minecraft_id" Decode.string
-        |> required "ty" itemType
+        |> required "ty" itemTypeDecoder
 
 
 {-| Decodes an ItemSpec
@@ -163,7 +163,7 @@ itemSpecDecoder =
         |> required "item_id" Decode.int
         |> required "item_name" Decode.string
         |> required "minecraft_id" Decode.string
-        |> required "ty" itemType
+        |> required "ty" itemTypeDecoder
         |> required "quantity" Decode.int
 
 
@@ -178,24 +178,22 @@ itemSlotDecoder =
 {-| Converts a string representation of an item type into something a little
 more typed
 -}
-matchItemType : String -> ItemType
+matchItemType : String -> Decoder ItemType
 matchItemType x =
     case x of
         "Item" ->
-            ItemStack
+            Decode.succeed ItemStack
 
         "Fluid" ->
-            Fluid
-
-        _ ->
-            UnknownType
+            Decode.succeed Fluid
+        _ -> Decode.fail <| "Unknown item type " ++ x
 
 
 {-| A decoder for item type fields
 -}
-itemType : Decoder ItemType
-itemType =
-    Decode.map matchItemType Decode.string
+itemTypeDecoder : Decoder ItemType
+itemTypeDecoder =
+    Pipeline.resolve (Decode.map matchItemType Decode.string)
 
 
 {-| Convert an HTTP error into a string that makes sense to flash as an error

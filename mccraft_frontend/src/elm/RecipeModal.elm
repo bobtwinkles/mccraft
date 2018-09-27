@@ -17,6 +17,7 @@ import ItemRendering exposing (itemIcon, itemLine)
 import Json.Decode as Decode
 import List.Extra as LE
 import Messages exposing (Msg, RecipeModalMsg)
+import ModalRendering exposing (withModal)
 import PrimaryModel exposing (..)
 import Url.Builder as UB
 
@@ -236,13 +237,12 @@ viewModalRecipe focus recipe =
 
 view : Model -> Html Msg
 view model =
-    div [ class "modal" ]
-        [ div [ class "modal-content" ]
-            [ div [ class "modal-header" ]
-                [ itemLine [] model.targetOutput
-                , i [ class "material-icons modal-close", onClick Messages.ExitModal ] [ text "close" ]
-                ]
-            , div [ class "modal-body" ]
+    let
+        header =
+            itemLine [] model.targetOutput
+
+        content =
+            [ div [ class "modal-body" ]
                 [ div [ class "modal-left" ]
                     (List.map
                         (viewRecipeModalCraftingListEntry model)
@@ -258,4 +258,5 @@ view model =
                 , text (String.fromInt model.targetOutput.id)
                 ]
             ]
-        ]
+    in
+    withModal [ header ] content

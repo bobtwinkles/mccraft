@@ -57,8 +57,7 @@ window.onload = function() {
             .size([1000, 1000]);
 
         sim
-            .symmetricDiffLinkLengths(CIRCLE_RADIUS)
-//            .flowLayout("y", CIRCLE_RADIUS * 3)
+            .jaccardLinkLengths(CIRCLE_RADIUS * 4)
             .start();
 
         sim.on('tick', ticked);
@@ -177,13 +176,13 @@ window.onload = function() {
         this.setSelectionRange(0, this.value.length);
     };
 
-    app.ports.recipeOut.subscribe(function(data) {
+    app.ports.graphOut.subscribe(function(data) {
         console.log(data);
 
         for (var i = 0; i < data.nodes.length; i++) {
             var node = data.nodes[i];
             if (node.id in graph.nodeIdMap) {
-                console.log("Noe already in graph, skipping");
+                console.log("Node already in graph, skipping");
                 continue;
             }
 
@@ -197,7 +196,14 @@ window.onload = function() {
             edge.source = graph.nodeIdMap[edge.source];
             edge.target = graph.nodeIdMap[edge.target];
 
+            var edgeID = getEdgeId(edge);
+
+            if (edgeID in graph.edgeIdMap) {
+                console.log("Edge already in graph, skipping");
+            }
+
             graph.edges.push(edge);
+            graph.edgeIdMap[edgeID] = edge;
 
             restart();
         }

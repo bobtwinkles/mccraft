@@ -60,10 +60,12 @@ body {
     }
 
     .sidebar-outputs {
+        min-height: 10em;
         overflow-y: auto;
     }
 
     .sidebar-inputs {
+        min-height: 10em;
         overflow-y: auto;
     }
 
@@ -115,6 +117,19 @@ svg img {
     background-color: red;
     padding: 4px;
     z-index: 100;
+}
+
+.button {
+    margin: 8px;
+    border: 2px solid black;
+    border-radius: 4px;
+    background: lightgrey;
+    text-align: center;
+    cursor: pointer;
+}
+
+.button:hover {
+    background: darkgrey;
 }
 
 .primary-search-wrapper {
@@ -213,6 +228,10 @@ svg img {
     display: flex;
 }
 
+.modal-header .modal-header-text {
+    width: 100%;
+}
+
 .modal-header .item-line {
     width: 100%;
 }
@@ -304,6 +323,7 @@ svg img {
 
 .modal-recipe-outputs {
     display: flex;
+    flex-wrap: wrap;
 }
 
 .modal-footer {
@@ -329,6 +349,7 @@ svg img {
 
 .refinement-inputs {
     display: flex;
+    flex-wrap: wrap;
 }
 
 .refinement-outputs {

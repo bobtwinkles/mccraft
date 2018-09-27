@@ -40,9 +40,6 @@ urlForItem ri =
         PrimaryModel.ItemStack ->
             UB.relative [ "images", "items", formatMCID ri.minecraftId ] []
 
-        PrimaryModel.UnknownType ->
-            UB.relative [ "static", "ohno.png" ] []
-
 
 {-| Render a detailed view of an item
 -}

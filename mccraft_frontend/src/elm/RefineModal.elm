@@ -6,6 +6,7 @@ import Html.Events exposing (..)
 import ItemRendering exposing (itemIcon, itemLine)
 import List.Extra as LE
 import Messages exposing (RefineModalMsg)
+import ModalRendering exposing (withModal)
 import PrimaryModel exposing (DedupedRecipe, InputSlot, Item, ItemSpec)
 import Set exposing (Set)
 
@@ -141,16 +142,20 @@ viewInputSlot idx is =
 
 view : Model -> Html Messages.Msg
 view model =
-    div [ class "modal" ]
-        [ div [ class "modal-content" ]
-            [ div [ class "modal-header" ]
-                [ itemLine [] model.targetOutput
-                , i [ class "material-icons modal-close", onClick Messages.ExitModal ] [ text "close" ]
-                ]
-            , div [ class "refinement-recipe" ]
-                [ div [ class "refinement-inputs" ] (List.indexedMap viewInputSlot model.inputSlots)
-                , i [ class "material-icons modal-recipe-arrow" ] [ text "arrow_right_alt" ]
-                , div [ class "refinement-outputs" ] (List.map (viewItemSpec [ class "output" ]) model.parent.outputs)
+    let
+        header =
+            itemLine [] model.targetOutput
+
+        content =
+            [ div [ class "refinement-recipe" ]
+                [ div [ class "refinement-inputs" ]
+                    (List.indexedMap viewInputSlot model.inputSlots)
+                , i [ class "material-icons modal-recipe-arrow" ]
+                    [ text "arrow_right_alt" ]
+                , div [ class "refinement-outputs" ]
+                    (List.map (viewItemSpec [ class "output" ])
+                        model.parent.outputs
+                    )
                 ]
             , div
                 [ class "refinement-accept-button"
@@ -158,4 +163,5 @@ view model =
                 ]
                 [ text "Accept" ]
             ]
-        ]
+    in
+    withModal [ header ] content
