@@ -136,7 +136,7 @@ window.onload = function() {
                 return d.bb.width + RECT_PADDING;
             })
             .attr('height', function(d) {
-                return d.bb.height + RECT_PADDING / 2;
+                return d.bb.height;
             })
             .attr('x', function(d) {
                 return -(d.bb.width + RECT_PADDING) / 2;
@@ -144,6 +144,8 @@ window.onload = function() {
             .attr('y', function(d) {
                 return -(d.bb.height + RECT_PADDING) / 2;
             })
+            .attr('rx', RECT_PADDING)
+            .attr('ry', RECT_PADDING)
             .classed('recipe-rect', true);
 
         node = node_groups.merge(node);
