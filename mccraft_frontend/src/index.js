@@ -231,8 +231,9 @@ window.onload = function() {
             graph.edges.push(edge);
             graph.edgeIdMap[edgeID] = edge;
 
-            restart();
         }
+
+        restart();
     });
 
     function getEdgeId(edge) {
