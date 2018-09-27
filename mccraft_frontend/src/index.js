@@ -114,11 +114,37 @@ window.onload = function() {
             .filter(function(d) {
                 return d.ty === "Recipe";
             });
-        recipe_nodes.append('text')
+
+        recipe_nodes
+            .append('rect');
+
+        recipe_nodes
+            .append('text')
             .attr('class', 'grid-recipe-text')
             .text(function(d) {
                 return d.machineName;
             });
+
+        recipe_nodes.selectAll('text').each(function (d) {
+            d.bb = this.getBBox();
+        });
+
+        const RECT_PADDING = 8;
+        recipe_nodes
+            .selectAll('rect')
+            .attr('width', function(d) {
+                return d.bb.width + RECT_PADDING;
+            })
+            .attr('height', function(d) {
+                return d.bb.height + RECT_PADDING / 2;
+            })
+            .attr('x', function(d) {
+                return -(d.bb.width + RECT_PADDING) / 2;
+            })
+            .attr('y', function(d) {
+                return -(d.bb.height + RECT_PADDING) / 2;
+            })
+            .classed('recipe-rect', true);
 
         node = node_groups.merge(node);
 

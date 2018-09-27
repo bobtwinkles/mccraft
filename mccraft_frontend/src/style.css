@@ -394,3 +394,8 @@ svg img {
 .refinement-accept-button:hover {
     background: darkgrey;
 }
+
+.recipe-rect {
+    fill: white;
+    stroke: black;
+}
