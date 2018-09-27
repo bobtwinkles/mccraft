@@ -67,6 +67,6 @@ viewExport model =
             [ div [ class "modal-header-text" ] [ text "Export" ] ]
 
         content =
-            [ text model.jsonifiedGraph ]
+            [ textarea [] [ text model.jsonifiedGraph ] ]
     in
     withModal header content
