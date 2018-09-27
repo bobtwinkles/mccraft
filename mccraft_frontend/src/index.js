@@ -100,7 +100,7 @@ window.onload = function() {
                 return d.imgUrl;
             });
         item_nodes.append('title')
-            .text(function (d) {
+            .text(function(d) {
                 return d.name;
             });
 
@@ -125,7 +125,7 @@ window.onload = function() {
                 return d.machineName;
             });
 
-        recipe_nodes.selectAll('text').each(function (d) {
+        recipe_nodes.selectAll('text').each(function(d) {
             d.bb = this.getBBox();
         });
 
@@ -160,7 +160,7 @@ window.onload = function() {
 
     function ticked() {
         link
-            .attr('d', function (d) {
+            .attr('d', function(d) {
                 // mostly borrowed from the Cola D3 integration example
                 var deltaX = d.target.x - d.source.x,
                     deltaY = d.target.y - d.source.y,
