@@ -417,3 +417,20 @@ svg img {
     justify-content: center;
 
 }
+
+.bom-items {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.bom-item {
+    border-radius: 4px;
+    border: 2px solid black;
+    display: flex;
+    flex-direction: row;
+    flex-wrap:wrap;
+    margin: 4px;
+    padding: 4px;
+}

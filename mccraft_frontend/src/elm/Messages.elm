@@ -58,6 +58,7 @@ type Msg
     | ImportModalMsg ImportModalMsg
     | DoImport String
     | PopExportModal
+    | PopBomModal Item
       -- Item removal modal
     | PopRemoveRecipeModal Int
       -- Error conditions
