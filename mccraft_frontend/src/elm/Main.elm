@@ -341,10 +341,19 @@ update msg model =
 
             Messages.PopBomModal item ->
                 let
+                    graph =
+                        model.graphContents.graph
+
+                    initialItems =
+                        IntDict.singleton item.id item
+
+                    initialQuants =
+                        IntDict.singleton item.id 1
+
                     ( quants, items ) =
-                        CG.graphBom model.graphContents.graph (IntDict.singleton item.id 1)
+                        CG.graphBom graph initialQuants
                 in
-                ( { model | modal = BOMModal <| BOM.mkModel items quants }, Cmd.none )
+                ( { model | modal = BOMModal <| BOM.mkModel graph items initialItems quants }, Cmd.none )
 
             Messages.ExitModal ->
                 ( { model | modal = NoModal }, Cmd.none )

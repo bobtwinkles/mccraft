@@ -419,10 +419,11 @@ svg img {
 }
 
 .bom-items {
+    align-items: center;
     display: flex;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: center;
-    align-items: center;
 }
 
 .bom-item {
