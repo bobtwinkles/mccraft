@@ -79,8 +79,14 @@ graphEdgeDecoder =
         |> required "production" Decode.int
 
 
-graphNodeEncoder : Graph.Node Node -> Encode.Value
-graphNodeEncoder ent =
+graphNodeEncoder : Int -> Graph.Node Node -> Encode.Value
+graphNodeEncoder depth ent =
+    let
+        commonFields =
+            [ ( "id", Encode.int ent.id )
+            , ( "depth", Encode.int depth )
+            ]
+    in
     case ent.label of
         ItemGraphNode ign ->
             let
@@ -93,20 +99,22 @@ graphNodeEncoder ent =
                             "Fluid"
             in
             Encode.object
-                [ ( "id", Encode.int ent.id )
-                , ( "ty", Encode.string "Item" )
-                , ( "name", Encode.string ign.item.itemName )
-                , ( "mcid", Encode.string ign.item.minecraftId )
-                , ( "itemClass", Encode.string itemClass )
-                , ( "imgUrl", Encode.string (urlForItem ign.item) )
-                ]
+                (commonFields
+                    ++ [ ( "ty", Encode.string "Item" )
+                       , ( "name", Encode.string ign.item.itemName )
+                       , ( "mcid", Encode.string ign.item.minecraftId )
+                       , ( "itemClass", Encode.string itemClass )
+                       , ( "imgUrl", Encode.string (urlForItem ign.item) )
+                       ]
+                )
 
         RecipeGraphNode rgn ->
             Encode.object
-                [ ( "id", Encode.int ent.id )
-                , ( "ty", Encode.string "Recipe" )
-                , ( "machineName", Encode.string rgn.machineName )
-                ]
+                (commonFields
+                    ++ [ ( "ty", Encode.string "Recipe" )
+                       , ( "machineName", Encode.string rgn.machineName )
+                       ]
+                )
 
 
 graphNodeDecoder : Decode.Decoder (Graph.Node Node)
@@ -145,13 +153,21 @@ graphEncoder : Graph Node Edge -> Encode.Value
 graphEncoder graph =
     let
         nodes =
-            List.map graphNodeEncoder (Graph.nodes graph)
+            Graph.bfs
+                (\ctxs depth ol ->
+                    List.head ctxs
+                        |> Maybe.map (\ctx -> ( depth, ctx.node ))
+                        |> Maybe.map (\x -> x :: ol)
+                        |> Maybe.withDefault ol
+                )
+                []
+                graph
 
         edges =
             List.map graphEdgeEncoder (Graph.edges graph)
     in
     Encode.object
-        [ ( "nodes", Encode.list (\x -> x) nodes )
+        [ ( "nodes", Encode.list (\( d, n ) -> graphNodeEncoder d n) nodes )
         , ( "edges", Encode.list (\x -> x) edges )
         ]
 
